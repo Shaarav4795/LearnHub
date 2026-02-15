@@ -54,7 +54,7 @@ struct ModelSettingsView: View {
                     }
 
                     Label {
-                        Text("Inputs over 10,000 characters exceed Apple Intelligence’s limit and may cause fall backs to Groq.")
+                        Text("Inputs over 6000 characters exceed Apple Intelligence’s limit and may cause fall backs to Groq.")
                             .font(.footnote)
                             .foregroundColor(.secondary)
                     } icon: {
