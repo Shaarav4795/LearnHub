@@ -34,7 +34,7 @@ enum ModelSettings {
         static let groqModel = "ai.groq.model"
     }
 
-    static let defaultGroqModel = "openai/gpt-oss-20b"
+    static let defaultGroqModel = "openai/gpt-oss-120b"
     static let visionModel = "meta-llama/llama-4-maverick-17b-128e-instruct"
 
     static func preference() async -> AIModelPreference {

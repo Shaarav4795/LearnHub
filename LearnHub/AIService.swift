@@ -236,20 +236,11 @@ actor AIService {
                     print("AI (Groq) - Fell back to model: \(model)")
                 }
                 return result
-            } catch let error as AIError {
-                lastError = error
-                // Check if it's a rate limit error (429)
-                if case .apiError(let message) = error, message.contains("429") || message.contains("rate limit") {
-                    print("AI (Groq) - Model \(model) rate limited, trying fallback...")
-                    // Continue to next model
-                    continue
-                } else {
-                    // For non-rate-limit errors, throw immediately
-                    throw error
-                }
             } catch {
+                // Capture any per-model error, save it and continue to the next fallback model.
                 lastError = error
-                throw error
+                print("AI (Groq) - Model \(model) failed with error: \(error). Trying next fallback...")
+                continue
             }
         }
         
@@ -311,10 +302,10 @@ actor AIService {
     
     private func getTextModelFallbacks(primaryModel: String) -> [String] {
         // Define fallback chain for text models
-        // If primary is openai/gpt-oss-20b, fallback to openai/gpt-oss-120b, then llama-3.3-70b-versatile
+        // Default primary is now openai/gpt-oss-120b -> fallback to openai/gpt-oss-20b -> llama-3.3-70b-versatile
         let fallbackChain: [String: [String]] = [
-            "openai/gpt-oss-20b": ["openai/gpt-oss-120b", "llama-3.3-70b-versatile"],
-            "openai/gpt-oss-120b": ["llama-3.3-70b-versatile"],
+            "openai/gpt-oss-120b": ["openai/gpt-oss-20b", "llama-3.3-70b-versatile"],
+            "openai/gpt-oss-20b": ["llama-3.3-70b-versatile"],
             "llama-3.3-70b-versatile": []
         ]
         
@@ -1439,20 +1430,11 @@ actor AIService {
                     print("AI (Groq Vision) - Fell back to model: \(model)")
                 }
                 return result
-            } catch let error as AIError {
-                lastError = error
-                // Check if it's a rate limit error (429)
-                if case .apiError(let message) = error, message.contains("429") || message.contains("rate limit") {
-                    print("AI (Groq Vision) - Model \(model) rate limited, trying fallback...")
-                    // Continue to next model
-                    continue
-                } else {
-                    // For non-rate-limit errors, throw immediately
-                    throw error
-                }
             } catch {
+                // Capture any per-model error, save it and continue to the next fallback model.
                 lastError = error
-                throw error
+                print("AI (Groq Vision) - Model \(model) failed with error: \(error). Trying next fallback...")
+                continue
             }
         }
         
