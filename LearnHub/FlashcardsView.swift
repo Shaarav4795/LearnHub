@@ -1,6 +1,5 @@
 import SwiftUI
 import SwiftData
-import Shimmer
 
 struct FlashcardsView: View {
     @Environment(\.modelContext) private var modelContext
@@ -18,11 +17,7 @@ struct FlashcardsView: View {
     @State private var showSessionComplete = false
     @State private var studiedCardIds: Set<UUID> = []
     @State private var masteredCardIds: Set<UUID> = []
-    @State private var showGenerateMoreSheet = false
-    @State private var isGeneratingMore = false
-    @State private var additionalFlashcardCount: Double = 6
-    @State private var relativeDifficulty: AIService.RelativeDifficulty = .same
-    @State private var generationError: String?
+    @State private var showEditFlashcards = false
     
     init(studySet: StudySet) {
         self.studySet = studySet
@@ -38,13 +33,11 @@ struct FlashcardsView: View {
     }
     
     var body: some View {
-        let isOverlayPresented = showGenerateMoreSheet
-        ZStack {
-            VStack {
-                if flashcards.isEmpty {
-                    Text("No flashcards available.")
-                        .foregroundColor(.secondary)
-                } else if showSessionComplete {
+        VStack {
+            if flashcards.isEmpty {
+                Text("No flashcards available.")
+                    .foregroundColor(.secondary)
+            } else if showSessionComplete {
                 sessionCompleteView
             } else {
                 // Session progress summary (studied vs mastered).
@@ -84,11 +77,11 @@ struct FlashcardsView: View {
                 HStack {
                     Button {
                         HapticsManager.shared.playTap()
-                        withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
-                            showGenerateMoreSheet = true
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                            showEditFlashcards = true
                         }
                     } label: {
-                        Label("Generate More", systemImage: "plus.circle")
+                        Label("Edit Flashcards", systemImage: "square.and.pencil")
                             .font(.headline)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 4)
@@ -149,50 +142,13 @@ struct FlashcardsView: View {
                 }
                 .padding()
             }
-            }
-            .blur(radius: isOverlayPresented ? 1 : 0)
-            .allowsHitTesting(!isOverlayPresented)
-            
-            if showGenerateMoreSheet {
-                Color.black.opacity(0.25)
-                    .ignoresSafeArea()
-                    .onTapGesture {
-                        withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
-                            showGenerateMoreSheet = false
-                        }
-                    }
-                
-                GenerateMorePopup(
-                    title: "Generate More Flashcards",
-                    count: $additionalFlashcardCount,
-                    countRange: 3...25,
-                    countLabel: "Flashcards",
-                    difficulty: $relativeDifficulty,
-                    isGenerating: isGeneratingMore,
-                    themeColor: themeManager.primaryColor,
-                    onGenerate: { generateMoreFlashcards() },
-                    onDismiss: {
-                        withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
-                            showGenerateMoreSheet = false
-                        }
-                    }
-                )
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                .transition(.scale.combined(with: .opacity))
-            }
         }
         .navigationTitle("Flashcards")
-        .alert("Could not generate", isPresented: Binding(
-            get: { generationError != nil },
-            set: { if !$0 { generationError = nil } }
-        )) {
-            Button("OK", role: .cancel) {
-                HapticsManager.shared.playTap()
-                generationError = nil
-            }
-        } message: {
-            if let generationError {
-                Text(generationError)
+        .fullScreenCover(isPresented: $showEditFlashcards) {
+            NavigationStack {
+                FlashcardsEditorView(studySet: studySet) {
+                    refreshFlashcardsFromSource()
+                }
             }
         }
         .onDisappear {
@@ -288,39 +244,16 @@ struct FlashcardsView: View {
         
         showSessionComplete = true
     }
-    
-    private func generateMoreFlashcards() {
-        HapticsManager.shared.playTap()
-        generationError = nil
-        isGeneratingMore = true
-        Task {
-            let service = AIService.shared
-            do {
-                let newData = try await service.generateFlashcards(
-                    from: studySet.originalText,
-                    count: Int(additionalFlashcardCount),
-                    relativeDifficulty: relativeDifficulty
-                )
-                await MainActor.run {
-                    let newCards = newData.map { pair -> Flashcard in
-                        let card = Flashcard(front: pair.front, back: pair.back)
-                        card.studySet = studySet
-                        modelContext.insert(card)
-                        return card
-                    }
-                    flashcards.append(contentsOf: newCards)
-                    currentIndex = 0
-                    isGeneratingMore = false
-                    showGenerateMoreSheet = false
-                    gamificationManager.syncStudySets([studySet])
-                }
-            } catch {
-                await MainActor.run {
-                    generationError = AIService.formatError(error)
-                    isGeneratingMore = false
-                }
-            }
+
+    private func refreshFlashcardsFromSource() {
+        flashcards = studySet.flashcards
+        if flashcards.isEmpty {
+            currentIndex = 0
+        } else {
+            currentIndex = min(currentIndex, flashcards.count - 1)
         }
+        cardsMastered = flashcards.filter(\.isMastered).count
+        masteredCardIds = Set(flashcards.filter(\.isMastered).map(\.id))
     }
 
     private func calculateXPEarned() -> Int {
@@ -328,102 +261,6 @@ struct FlashcardsView: View {
         xp += cardsMastered * XPRewards.flashcardMastered
         let multiplier = XPRewards.streakMultiplier(for: profile.currentStreak)
         return Int(Double(xp) * multiplier)
-    }
-}
-
-// MARK: - Generate-more sheet
-
-private struct GenerateMorePopup: View {
-    let title: String
-    @Binding var count: Double
-    let countRange: ClosedRange<Double>
-    let countLabel: String
-    @Binding var difficulty: AIService.RelativeDifficulty
-    let isGenerating: Bool
-    let themeColor: Color
-    let onGenerate: () -> Void
-    let onDismiss: () -> Void
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                HStack(spacing: 10) {
-                    CelebrationLottieView(animationName: "celebration", play: true)
-                        .frame(width: 24, height: 24)
-                    Text(title)
-                        .font(.headline)
-                }
-                Spacer()
-                Button {
-                    onDismiss()
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.title3)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Text(countLabel)
-                        .font(.subheadline)
-                    Spacer()
-                    Text("\(Int(count))")
-                        .font(.subheadline.bold())
-                        .foregroundColor(.secondary)
-                }
-                Slider(value: $count, in: countRange, step: 1)
-                    .tint(themeColor)
-                    .onChange(of: count) { _, _ in
-                        HapticsManager.shared.playTap()
-                    }
-            }
-            
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Difficulty")
-                    .font(.subheadline)
-                Picker("Difficulty", selection: $difficulty) {
-                    ForEach(AIService.RelativeDifficulty.allCases) { diff in
-                        Text(diff.rawValue).tag(diff)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .onChange(of: difficulty) { _, _ in
-                    HapticsManager.shared.playTap()
-                }
-            }
-            .buttonStyle(PressScaleButtonStyle())
-            
-            Button(action: onGenerate) {
-                HStack {
-                    if isGenerating {
-                        ProgressView()
-                            .progressViewStyle(.circular)
-                            .tint(.white)
-                    }
-                    Text(isGenerating ? "Generating..." : "Generate")
-                        .bold()
-                }
-                .frame(maxWidth: .infinity)
-                .padding()
-                .background(themeColor)
-                .foregroundColor(.white)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .shimmering(active: isGenerating)
-            }
-            .buttonStyle(.plain)
-            .buttonStyle(PressScaleButtonStyle())
-            .disabled(isGenerating)
-        }
-        .padding(20)
-        .frame(maxWidth: 360)
-        .background(Color(.systemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .stroke(themeColor.opacity(0.22), lineWidth: 1)
-        )
-        .shadow(color: Color.black.opacity(0.16), radius: 18, y: 6)
     }
 }
 

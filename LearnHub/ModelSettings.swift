@@ -34,7 +34,8 @@ enum ModelSettings {
         static let groqModel = "ai.groq.model"
     }
 
-    static let defaultGroqModel = "openai/gpt-oss-120b"
+    // Default Groq model is now the compound family (falls back to smaller / OSS models)
+    static let defaultGroqModel = "groq/compound"
     static let visionModel = "meta-llama/llama-4-maverick-17b-128e-instruct"
 
     static func preference() async -> AIModelPreference {

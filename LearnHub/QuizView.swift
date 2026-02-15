@@ -505,8 +505,9 @@ struct QuizView: View {
         Task {
             let service = AIService.shared
             do {
+                let sourceText = limitedAISourceTextForGeneration()
                 let newData = try await service.generateQuestions(
-                    from: studySet.originalText,
+                    from: sourceText,
                     count: Int(additionalQuestionCount),
                     relativeDifficulty: relativeDifficulty
                 )
@@ -534,6 +535,26 @@ struct QuizView: View {
                 }
             }
         }
+    }
+
+    private func limitedAISourceTextForGeneration() -> String {
+        let summaryPart = (studySet.summary ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let sourcePart = studySet.originalText
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let limitedSummary = String(summaryPart.prefix(700))
+        let limitedSource = String(sourcePart.prefix(1300))
+
+        return """
+        Study Set Title: \(studySet.title)
+
+        Key Summary:
+        \(limitedSummary)
+
+        Source Excerpt:
+        \(limitedSource)
+        """
     }
     
     private func resetQuizState() {

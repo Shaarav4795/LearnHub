@@ -53,7 +53,7 @@ struct InputView: View {
     @State private var isFolderPickerExpanded: Bool = false
     @State private var activeSheet: ActiveSheet?
     @State private var isGenerating = false
-    private let characterLimit = 10000
+    private let characterLimit = 15000
     
     private var profile: UserProfile {
         if let existing = profiles.first {

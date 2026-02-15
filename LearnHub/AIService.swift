@@ -72,10 +72,19 @@ actor AIService {
     private struct GroqRequest: Codable, Sendable {
         let model: String
         let messages: [Message]
+        let compound_custom: CompoundCustom?
         
         struct Message: Codable, Sendable {
             let role: String
             let content: String
+        }
+        
+        struct CompoundCustom: Codable, Sendable {
+            let tools: Tools
+            
+            struct Tools: Codable, Sendable {
+                let enabled_tools: [String]
+            }
         }
     }
 
@@ -262,12 +271,15 @@ actor AIService {
         request.addValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.addValue("application/json", forHTTPHeaderField: "Content-Type")
 
+        let compoundCustom: GroqRequest.CompoundCustom? = model.hasPrefix("groq/compound") ? .init(tools: .init(enabled_tools: ["web_search","code_interpreter","visit_website"])) : nil
+
         let payload = GroqRequest(
             model: model,
             messages: [
                 .init(role: "system", content: systemPrompt),
                 .init(role: "user", content: userPrompt)
-            ]
+            ],
+            compound_custom: compoundCustom
         )
 
         request.httpBody = try JSONEncoder().encode(payload)
@@ -301,9 +313,11 @@ actor AIService {
     }
     
     private func getTextModelFallbacks(primaryModel: String) -> [String] {
-        // Define fallback chain for text models
-        // Default primary is now openai/gpt-oss-120b -> fallback to openai/gpt-oss-20b -> llama-3.3-70b-versatile
+        // Define fallback chain for text models.
+        // Default primary is now `groq/compound` -> `groq/compound-mini` -> `openai/gpt-oss-120b` -> `openai/gpt-oss-20b` -> `llama-3.3-70b-versatile`.
         let fallbackChain: [String: [String]] = [
+            "groq/compound": ["groq/compound-mini", "openai/gpt-oss-120b", "openai/gpt-oss-20b", "llama-3.3-70b-versatile"],
+            "groq/compound-mini": ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "llama-3.3-70b-versatile"],
             "openai/gpt-oss-120b": ["openai/gpt-oss-20b", "llama-3.3-70b-versatile"],
             "openai/gpt-oss-20b": ["llama-3.3-70b-versatile"],
             "llama-3.3-70b-versatile": []
@@ -1244,49 +1258,70 @@ actor AIService {
         messages: [ChatTurn]
     ) async throws -> String {
         let apiKey = try await groqApiKey()
-        let model = await ModelSettings.groqModel()
-        
-        var request = URLRequest(url: endpoint)
-        request.httpMethod = "POST"
-        request.addValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
-        
-        // Build messages array with system prompt and conversation history
-        var apiMessages: [GroqRequest.Message] = [
-            .init(role: "system", content: systemPrompt)
-        ]
-        
-        for msg in messages {
-            apiMessages.append(.init(role: msg.role, content: msg.content))
-        }
-        
-        let payload = GroqRequest(model: model, messages: apiMessages)
-        request.httpBody = try JSONEncoder().encode(payload)
-        
-        await applyRateLimitDelay()
-        
-        let (data, response) = try await URLSession.shared.data(for: request)
-        
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw AIError.generationFailed
-        }
-        
-        guard (200...299).contains(httpResponse.statusCode) else {
-            var errorDetail = "Status code: \(httpResponse.statusCode)"
-            if let errorResponse = try? JSONDecoder().decode(GroqErrorResponse.self, from: data) {
-                errorDetail = "\(errorResponse.error.message) (Code: \(errorResponse.error.code ?? "\(httpResponse.statusCode)"))"
-            } else if let errorText = String(data: data, encoding: .utf8) {
-                print("Groq API Error: \(errorText)")
+        let primaryModel = await ModelSettings.groqModel()
+        let modelsToTry = getTextModelFallbacks(primaryModel: primaryModel)
+
+        var lastError: Error?
+
+        for model in modelsToTry {
+            do {
+                var request = URLRequest(url: endpoint)
+                request.httpMethod = "POST"
+                request.addValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+                request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+
+                // Build messages array with system prompt and conversation history
+                var apiMessages: [GroqRequest.Message] = [
+                    .init(role: "system", content: systemPrompt)
+                ]
+
+                for msg in messages {
+                    apiMessages.append(.init(role: msg.role, content: msg.content))
+                }
+
+                let compoundCustom: GroqRequest.CompoundCustom? = model.hasPrefix("groq/compound") ? .init(tools: .init(enabled_tools: ["web_search","code_interpreter","visit_website"])) : nil
+                let payload = GroqRequest(model: model, messages: apiMessages, compound_custom: compoundCustom)
+                request.httpBody = try JSONEncoder().encode(payload)
+
+                await applyRateLimitDelay()
+
+                let (data, response) = try await URLSession.shared.data(for: request)
+
+                guard let httpResponse = response as? HTTPURLResponse else {
+                    throw AIError.generationFailed
+                }
+
+                guard (200...299).contains(httpResponse.statusCode) else {
+                    var errorDetail = "Status code: \(httpResponse.statusCode)"
+                    if let errorResponse = try? JSONDecoder().decode(GroqErrorResponse.self, from: data) {
+                        errorDetail = "\(errorResponse.error.message) (Code: \(errorResponse.error.code ?? "\(httpResponse.statusCode)"))"
+                    } else if let errorText = String(data: data, encoding: .utf8) {
+                        print("Groq API Error: \(errorText)")
+                    }
+                    throw AIError.apiError(errorDetail)
+                }
+
+                let decodedResponse = try JSONDecoder().decode(GroqResponse.self, from: data)
+                guard let content = decodedResponse.choices.first?.message.content else {
+                    throw AIError.invalidResponse
+                }
+
+                if model != primaryModel {
+                    print("AI (Groq Conversation) - Fell back to model: \(model)")
+                }
+
+                return content
+            } catch {
+                lastError = error
+                print("AI (Groq Conversation) - Model \(model) failed with error: \(error). Trying next fallback...")
+                continue
             }
-            throw AIError.apiError(errorDetail)
         }
-        
-        let decodedResponse = try JSONDecoder().decode(GroqResponse.self, from: data)
-        guard let content = decodedResponse.choices.first?.message.content else {
-            throw AIError.invalidResponse
+
+        if let error = lastError {
+            throw error
         }
-        
-        return content
+        throw AIError.generationFailed
     }
     
     private func runAppleIntelligenceConversation(

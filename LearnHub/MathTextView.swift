@@ -6,12 +6,23 @@ struct MathTextView: View {
     let fontSize: CGFloat
     /// When true, render all non-math segments in bold for emphasis.
     let forceBold: Bool
+    private let hasMath: Bool
+    private let parsedLines: [ParsedLine]
+    private let attributedText: AttributedString?
     @Environment(\.multilineTextAlignment) var textAlignment
     
     init(_ text: String, fontSize: CGFloat = 17, forceBold: Bool = false) {
         self.text = text
         self.fontSize = fontSize
         self.forceBold = forceBold
+        self.hasMath = text.contains("$")
+        if text.contains("$") {
+            self.parsedLines = Self.cachedParsedLines(for: text)
+            self.attributedText = nil
+        } else {
+            self.parsedLines = []
+            self.attributedText = Self.cachedAttributedText(for: text)
+        }
     }
     
     private var alignment: HorizontalAlignment {
@@ -23,37 +34,44 @@ struct MathTextView: View {
     }
     
     var body: some View {
-        // Split by newlines to preserve paragraph structure.
-        VStack(alignment: alignment, spacing: 8) {
-            ForEach(splitByNewlines(text), id: \.self) { line in
-                if #available(iOS 16.0, *) {
-                    FlowLayout(spacing: 4, lineSpacing: 4, alignment: alignment) {
-                        ForEach(parseMath(line)) { segment in
-                            if segment.isMath {
-                                MathView(equation: segment.content, fontSize: fontSize + 2)
-                                    .fixedSize()
-                            } else {
-                                Text(segment.content)
-                                    .font(.system(size: fontSize))
-                                    .fontWeight((forceBold || segment.isBold) ? .bold : .regular)
-                                    .italic(segment.isItalic)
+        Group {
+            if !hasMath, let attributedText {
+                Text(attributedText)
+                    .font(.system(size: fontSize))
+                    .fontWeight(forceBold ? .bold : .regular)
+                    .multilineTextAlignment(textAlignment)
+            } else {
+                // Math-heavy path: keep segments coarse, but preserve inline reading flow.
+                LazyVStack(alignment: alignment, spacing: 8) {
+                    ForEach(parsedLines) { line in
+                        if #available(iOS 16.0, *) {
+                            FlowLayout(spacing: 4, lineSpacing: 4, alignment: alignment) {
+                                ForEach(line.segments) { segment in
+                                    if segment.isMath {
+                                        MathView(equation: segment.content, fontSize: fontSize + 2)
+                                            .fixedSize()
+                                    } else {
+                                        Text(segment.content)
+                                            .font(.system(size: fontSize))
+                                            .fontWeight((forceBold || segment.isBold) ? .bold : .regular)
+                                            .italic(segment.isItalic)
+                                    }
+                                }
                             }
-                        }
-                    }
-                } else {
-                    // Fallback for older iOS versions: use a horizontal scroll layout.
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 0) {
-                            ForEach(parseMath(line)) { segment in
-                                if segment.isMath {
-                                    MathView(equation: segment.content, fontSize: fontSize + 2)
-                                        .fixedSize()
-                                        .padding(.horizontal, 2)
-                                } else {
-                                    Text(segment.content)
-                                        .font(.system(size: fontSize))
-                                        .fontWeight((forceBold || segment.isBold) ? .bold : .regular)
-                                        .italic(segment.isItalic)
+                        } else {
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 4) {
+                                    ForEach(line.segments) { segment in
+                                        if segment.isMath {
+                                            MathView(equation: segment.content, fontSize: fontSize + 2)
+                                                .fixedSize()
+                                        } else {
+                                            Text(segment.content)
+                                                .font(.system(size: fontSize))
+                                                .fontWeight((forceBold || segment.isBold) ? .bold : .regular)
+                                                .italic(segment.isItalic)
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -64,37 +82,111 @@ struct MathTextView: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(text)
     }
+
+    private static let cacheLock = NSLock()
+    private static var parsedLinesCache: [String: [ParsedLine]] = [:]
+    private static var attributedTextCache: [String: AttributedString] = [:]
+    private static let maxCacheEntries = 96
+
+    private static func cachedAttributedText(for text: String) -> AttributedString {
+        cacheLock.lock()
+        if let cached = attributedTextCache[text] {
+            cacheLock.unlock()
+            return cached
+        }
+        cacheLock.unlock()
+
+        let attributed: AttributedString
+        do {
+            attributed = try AttributedString(markdown: text)
+        } catch {
+            attributed = AttributedString(text)
+        }
+
+        cacheLock.lock()
+        attributedTextCache[text] = attributed
+        if attributedTextCache.count > maxCacheEntries, let keyToRemove = attributedTextCache.keys.first {
+            attributedTextCache.removeValue(forKey: keyToRemove)
+        }
+        cacheLock.unlock()
+
+        return attributed
+    }
+
+    private static func cachedParsedLines(for text: String) -> [ParsedLine] {
+        cacheLock.lock()
+        if let cached = parsedLinesCache[text] {
+            cacheLock.unlock()
+            return cached
+        }
+        cacheLock.unlock()
+
+        let lines = splitByNewlines(text)
+        let parsed = lines.enumerated().map { index, line in
+            ParsedLine(id: index, segments: parseMath(line))
+        }
+
+        cacheLock.lock()
+        parsedLinesCache[text] = parsed
+        if parsedLinesCache.count > maxCacheEntries, let keyToRemove = parsedLinesCache.keys.first {
+            parsedLinesCache.removeValue(forKey: keyToRemove)
+        }
+        cacheLock.unlock()
+
+        return parsed
+    }
     
     private struct Segment: Identifiable {
-        let id = UUID()
+        let id: Int
         let content: String
         let isMath: Bool
         var isBold: Bool = false
         var isItalic: Bool = false
     }
+
+    private struct ParsedLine: Identifiable {
+        let id: Int
+        let segments: [Segment]
+    }
     
-    private func splitByNewlines(_ text: String) -> [String] {
+    private static func splitByNewlines(_ text: String) -> [String] {
         // Remove empty lines to avoid rendering empty rows.
         return text.components(separatedBy: .newlines).filter { !$0.isEmpty }
     }
     
-    private func parseMath(_ text: String) -> [Segment] {
+    private static func parseMath(_ text: String) -> [Segment] {
         var segments: [Segment] = []
+        segments.reserveCapacity(max(2, text.count / 24))
+        var segmentID = 0
         let components = text.components(separatedBy: "$")
         
         for (index, component) in components.enumerated() {
             if index % 2 == 1 {
                 // Math segment between $...$ delimiters.
                 if !component.isEmpty {
-                    segments.append(Segment(content: component, isMath: true))
+                    segments.append(Segment(id: segmentID, content: component, isMath: true))
+                    segmentID += 1
                 }
             } else {
                 // Text segment parsed as Markdown using `AttributedString`.
                 if !component.isEmpty {
                     if !containsMarkdownSyntax(component) {
-                        let words = component.components(separatedBy: .whitespacesAndNewlines)
-                        for word in words where !word.isEmpty {
-                            segments.append(Segment(content: word, isMath: false))
+                        let trimmed = component.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !trimmed.isEmpty {
+                            // Split plain text into word-like tokens (preserve trailing spaces) so
+                            // the FlowLayout can wrap within a line that mixes math + text.
+                            let ns = component as NSString
+                            if let regex = try? NSRegularExpression(pattern: "\\S+\\s*", options: []) {
+                                let matches = regex.matches(in: component, options: [], range: NSRange(location: 0, length: ns.length))
+                                for m in matches {
+                                    let token = ns.substring(with: m.range)
+                                    segments.append(Segment(id: segmentID, content: token, isMath: false))
+                                    segmentID += 1
+                                }
+                            } else {
+                                segments.append(Segment(id: segmentID, content: trimmed, isMath: false))
+                                segmentID += 1
+                            }
                         }
                         continue
                     }
@@ -107,25 +199,32 @@ struct MathTextView: View {
                         let attributed = try AttributedString(markdown: component)
                         
                         for run in attributed.runs {
-                            let runText = String(attributed[run.range].characters)
+                            let runText = String(attributed[run.range].characters).trimmingCharacters(in: .whitespacesAndNewlines)
+                            guard !runText.isEmpty else { continue }
                             let isBold = run.inlinePresentationIntent?.contains(.stronglyEmphasized) ?? false
                             let isItalic = run.inlinePresentationIntent?.contains(.emphasized) ?? false
-                            
-                            // Split run text into words for simple flow layout.
-                            let words = runText.components(separatedBy: .whitespaces)
-                            for word in words {
-                                if !word.isEmpty {
-                                    segments.append(Segment(content: word, isMath: false, isBold: isBold, isItalic: isItalic))
+
+                            // Break the attributed run into smaller tokens so FlowLayout can wrap
+                            // between words while preserving bold/italic flags.
+                            let ns = runText as NSString
+                            if let regex = try? NSRegularExpression(pattern: "\\S+\\s*", options: []) {
+                                let matches = regex.matches(in: runText, options: [], range: NSRange(location: 0, length: ns.length))
+                                for m in matches {
+                                    let token = ns.substring(with: m.range)
+                                    segments.append(Segment(id: segmentID, content: token, isMath: false, isBold: isBold, isItalic: isItalic))
+                                    segmentID += 1
                                 }
+                            } else {
+                                segments.append(Segment(id: segmentID, content: runText, isMath: false, isBold: isBold, isItalic: isItalic))
+                                segmentID += 1
                             }
                         }
                     } catch {
                         // Fallback to plain text tokens if Markdown parsing fails.
-                        let words = component.components(separatedBy: .whitespaces)
-                        for word in words {
-                            if !word.isEmpty {
-                                segments.append(Segment(content: word, isMath: false))
-                            }
+                        let trimmed = component.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !trimmed.isEmpty {
+                            segments.append(Segment(id: segmentID, content: trimmed, isMath: false))
+                            segmentID += 1
                         }
                     }
                 }
@@ -135,7 +234,7 @@ struct MathTextView: View {
         return segments
     }
 
-    private func containsMarkdownSyntax(_ value: String) -> Bool {
+    private static func containsMarkdownSyntax(_ value: String) -> Bool {
         value.contains("*") || value.contains("_") || value.contains("#") || value.contains("`") || value.contains("[") || value.contains("]")
     }
 }

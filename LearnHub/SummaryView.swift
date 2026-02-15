@@ -14,12 +14,12 @@ struct SummaryView: View {
     init(summary: String, isGuide: Bool = false) {
         self.summary = summary
         self.isGuide = isGuide
-        self.parsedItems = Self.isBulletPoints(summary) ? Self.parseBulletPoints(summary) : nil
+        self.parsedItems = Self.cachedParsedItems(for: summary)
     }
     
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
+            LazyVStack(alignment: .leading, spacing: 16) {
                 HStack {
                     Image(systemName: isGuide ? "book.fill" : "text.alignleft")
                         .foregroundColor(.accentColor)
@@ -32,7 +32,7 @@ struct SummaryView: View {
                 // Removed AI-generated caption per user request
                 
                 if let items = parsedItems {
-                    VStack(alignment: .leading, spacing: 8) {
+                    LazyVStack(alignment: .leading, spacing: 8) {
                         ForEach(items, id: \.self) { item in
                             switch item {
                             case .bullet(let text):
@@ -57,16 +57,55 @@ struct SummaryView: View {
                     }
                     .padding()
                     .glassCard(cornerRadius: 12, strokeOpacity: 0.2)
-                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
                 } else {
                     MathTextView(summary, fontSize: 17)
                         .padding()
                         .glassCard(cornerRadius: 12, strokeOpacity: 0.2)
-                        .transition(.opacity)
                 }
             }
             .padding()
         }
+    }
+
+    private static let cacheLock = NSLock()
+    private static var bulletCache: [String: [SummaryItem]] = [:]
+    private static var plainTextCache: Set<String> = []
+    private static let maxCacheEntries = 64
+
+    private static func cachedParsedItems(for text: String) -> [SummaryItem]? {
+        cacheLock.lock()
+        if let cached = bulletCache[text] {
+            cacheLock.unlock()
+            return cached
+        }
+        if plainTextCache.contains(text) {
+            cacheLock.unlock()
+            return nil
+        }
+        cacheLock.unlock()
+
+        let parsed: [SummaryItem]?
+        if Self.isBulletPoints(text) {
+            parsed = Self.parseBulletPoints(text)
+        } else {
+            parsed = nil
+        }
+
+        cacheLock.lock()
+        if let parsed {
+            bulletCache[text] = parsed
+            if bulletCache.count > maxCacheEntries, let keyToRemove = bulletCache.keys.first {
+                bulletCache.removeValue(forKey: keyToRemove)
+            }
+        } else {
+            plainTextCache.insert(text)
+            if plainTextCache.count > maxCacheEntries, let keyToRemove = plainTextCache.first {
+                plainTextCache.remove(keyToRemove)
+            }
+        }
+        cacheLock.unlock()
+
+        return parsed
     }
     
     private static func isBulletPoints(_ text: String) -> Bool {
@@ -90,6 +129,7 @@ struct SummaryView: View {
     private static func parseBulletPoints(_ text: String) -> [SummaryItem] {
         let lines = text.components(separatedBy: .newlines)
         var results: [SummaryItem] = []
+        results.reserveCapacity(lines.count)
 
         var currentType: ItemType? = nil
         var currentContent: String? = nil
