@@ -15,8 +15,9 @@ struct MathTextView: View {
         self.text = text
         self.fontSize = fontSize
         self.forceBold = forceBold
-        self.hasMath = text.contains("$")
-        if text.contains("$") {
+        let containsMath = Self.containsMathDelimiter(in: text)
+        self.hasMath = containsMath
+        if containsMath {
             self.parsedLines = Self.cachedParsedLines(for: text)
             self.attributedText = nil
         } else {
@@ -44,23 +45,14 @@ struct MathTextView: View {
                 // Math-heavy path: keep segments coarse, but preserve inline reading flow.
                 LazyVStack(alignment: alignment, spacing: 8) {
                     ForEach(parsedLines) { line in
-                        if #available(iOS 16.0, *) {
-                            FlowLayout(spacing: 4, lineSpacing: 4, alignment: alignment) {
-                                ForEach(line.segments) { segment in
-                                    if segment.isMath {
-                                        MathView(equation: segment.content, fontSize: fontSize + 2)
-                                            .fixedSize()
-                                    } else {
-                                        Text(segment.content)
-                                            .font(.system(size: fontSize))
-                                            .fontWeight((forceBold || segment.isBold) ? .bold : .regular)
-                                            .italic(segment.isItalic)
-                                    }
-                                }
-                            }
+                        if let attributed = line.attributed {
+                            Text(attributed)
+                                .font(.system(size: fontSize))
+                                .fontWeight(forceBold ? .bold : .regular)
+                                .multilineTextAlignment(textAlignment)
                         } else {
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(spacing: 4) {
+                            if #available(iOS 16.0, *) {
+                                FlowLayout(spacing: 4, lineSpacing: 4, alignment: alignment) {
                                     ForEach(line.segments) { segment in
                                         if segment.isMath {
                                             MathView(equation: segment.content, fontSize: fontSize + 2)
@@ -70,6 +62,22 @@ struct MathTextView: View {
                                                 .font(.system(size: fontSize))
                                                 .fontWeight((forceBold || segment.isBold) ? .bold : .regular)
                                                 .italic(segment.isItalic)
+                                        }
+                                    }
+                                }
+                            } else {
+                                ScrollView(.horizontal, showsIndicators: false) {
+                                    HStack(spacing: 4) {
+                                        ForEach(line.segments) { segment in
+                                            if segment.isMath {
+                                                MathView(equation: segment.content, fontSize: fontSize + 2)
+                                                    .fixedSize()
+                                            } else {
+                                                Text(segment.content)
+                                                    .font(.system(size: fontSize))
+                                                    .fontWeight((forceBold || segment.isBold) ? .bold : .regular)
+                                                    .italic(segment.isItalic)
+                                            }
                                         }
                                     }
                                 }
@@ -87,6 +95,13 @@ struct MathTextView: View {
     private static var parsedLinesCache: [String: [ParsedLine]] = [:]
     private static var attributedTextCache: [String: AttributedString] = [:]
     private static let maxCacheEntries = 96
+    private static let mathPattern = try! NSRegularExpression(
+        pattern: #"\$\$(.+?)\$\$|\$(?!\$)(.+?)(?<!\$)\$|\\\((.+?)\\\)|\\\[(.+?)\\\]"#,
+        options: []
+    )
+    private static let wrapTokenPattern = try! NSRegularExpression(pattern: "\\S+\\s*", options: [])
+    private static let plainTextChars = CharacterSet(charactersIn: "*_#`[]")
+    private static let maxWrapTokensPerSegment = 3
 
     private static func cachedAttributedText(for text: String) -> AttributedString {
         cacheLock.lock()
@@ -96,12 +111,7 @@ struct MathTextView: View {
         }
         cacheLock.unlock()
 
-        let attributed: AttributedString
-        do {
-            attributed = try AttributedString(markdown: text)
-        } catch {
-            attributed = AttributedString(text)
-        }
+        let attributed = markdownToAttributedString(text)
 
         cacheLock.lock()
         attributedTextCache[text] = attributed
@@ -123,7 +133,11 @@ struct MathTextView: View {
 
         let lines = splitByNewlines(text)
         let parsed = lines.enumerated().map { index, line in
-            ParsedLine(id: index, segments: parseMath(line))
+            if containsMathDelimiter(in: line) {
+                ParsedLine(id: index, segments: parseMath(line), attributed: nil)
+            } else {
+                ParsedLine(id: index, segments: [], attributed: markdownToAttributedString(line))
+            }
         }
 
         cacheLock.lock()
@@ -147,119 +161,204 @@ struct MathTextView: View {
     private struct ParsedLine: Identifiable {
         let id: Int
         let segments: [Segment]
+        let attributed: AttributedString?
     }
     
     private static func splitByNewlines(_ text: String) -> [String] {
         // Remove empty lines to avoid rendering empty rows.
-        return text.components(separatedBy: .newlines).filter { !$0.isEmpty }
+        return text.split(whereSeparator: { $0.isNewline }).map(String.init)
     }
     
     private static func parseMath(_ text: String) -> [Segment] {
         var segments: [Segment] = []
-        segments.reserveCapacity(max(2, text.count / 24))
+        segments.reserveCapacity(6)
         var segmentID = 0
-        let components = text.components(separatedBy: "$")
-        
-        for (index, component) in components.enumerated() {
-            if index % 2 == 1 {
-                // Math segment between $...$ delimiters.
-                if !component.isEmpty {
-                    segments.append(Segment(id: segmentID, content: component, isMath: true))
-                    segmentID += 1
-                }
-            } else {
-                // Text segment parsed as Markdown using `AttributedString`.
-                if !component.isEmpty {
-                    if !containsMarkdownSyntax(component) {
-                        let trimmed = component.trimmingCharacters(in: .whitespacesAndNewlines)
-                        if !trimmed.isEmpty {
-                            // Split plain text into word-like tokens (preserve trailing spaces) so
-                            // the FlowLayout can wrap within a line that mixes math + text.
-                            let ns = component as NSString
-                            if let regex = try? NSRegularExpression(pattern: "\\S+\\s*", options: []) {
-                                let matches = regex.matches(in: component, options: [], range: NSRange(location: 0, length: ns.length))
-                                for m in matches {
-                                    let token = ns.substring(with: m.range)
-                                    segments.append(Segment(id: segmentID, content: token, isMath: false))
-                                    segmentID += 1
-                                }
-                            } else {
-                                segments.append(Segment(id: segmentID, content: trimmed, isMath: false))
-                                segmentID += 1
-                            }
-                        }
-                        continue
-                    }
-                    do {
-                        // Skip segments that are only whitespace.
-                        if component.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                             continue 
-                        }
-                        
-                        let attributed = try AttributedString(markdown: component)
-                        
-                        for run in attributed.runs {
-                            let runText = String(attributed[run.range].characters).trimmingCharacters(in: .whitespacesAndNewlines)
-                            guard !runText.isEmpty else { continue }
-                            let isBold = run.inlinePresentationIntent?.contains(.stronglyEmphasized) ?? false
-                            let isItalic = run.inlinePresentationIntent?.contains(.emphasized) ?? false
+        let ns = text as NSString
+        let fullRange = NSRange(location: 0, length: ns.length)
+        let matches = mathPattern.matches(in: text, options: [], range: fullRange)
 
-                            // Break the attributed run into smaller tokens so FlowLayout can wrap
-                            // between words while preserving bold/italic flags.
-                            let ns = runText as NSString
-                            if let regex = try? NSRegularExpression(pattern: "\\S+\\s*", options: []) {
-                                let matches = regex.matches(in: runText, options: [], range: NSRange(location: 0, length: ns.length))
-                                for m in matches {
-                                    let token = ns.substring(with: m.range)
-                                    segments.append(Segment(id: segmentID, content: token, isMath: false, isBold: isBold, isItalic: isItalic))
-                                    segmentID += 1
-                                }
-                            } else {
-                                segments.append(Segment(id: segmentID, content: runText, isMath: false, isBold: isBold, isItalic: isItalic))
-                                segmentID += 1
-                            }
-                        }
-                    } catch {
-                        // Fallback to plain text tokens if Markdown parsing fails.
-                        let trimmed = component.trimmingCharacters(in: .whitespacesAndNewlines)
-                        if !trimmed.isEmpty {
-                            segments.append(Segment(id: segmentID, content: trimmed, isMath: false))
-                            segmentID += 1
-                        }
-                    }
+        guard !matches.isEmpty else {
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty {
+                segments.append(Segment(id: segmentID, content: text, isMath: false))
+            }
+            return segments
+        }
+
+        // Fast path for an entire-line equation wrapped in delimiters.
+        if matches.count == 1,
+           let only = matches.first,
+           only.range.location == 0,
+           only.range.length == ns.length,
+           let equation = stripMathDelimiters(text),
+           !equation.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            segments.append(Segment(id: 0, content: equation, isMath: true))
+            return segments
+        }
+
+        var currentLocation = 0
+        for match in matches {
+            let matchRange = match.range
+            if matchRange.location > currentLocation {
+                let textRange = NSRange(location: currentLocation, length: matchRange.location - currentLocation)
+                let plainText = ns.substring(with: textRange)
+                if !plainText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    appendWrapTokens(plainText, to: &segments, segmentID: &segmentID)
                 }
             }
+
+            let rawMath = ns.substring(with: matchRange)
+            if let equation = stripMathDelimiters(rawMath), !equation.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                segments.append(Segment(id: segmentID, content: equation, isMath: true))
+                segmentID += 1
+            }
+
+            currentLocation = matchRange.location + matchRange.length
         }
-        
+
+        if currentLocation < ns.length {
+            let tailRange = NSRange(location: currentLocation, length: ns.length - currentLocation)
+            let tailText = ns.substring(with: tailRange)
+            if !tailText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                appendWrapTokens(tailText, to: &segments, segmentID: &segmentID)
+            }
+        }
+
         return segments
     }
 
-    private static func containsMarkdownSyntax(_ value: String) -> Bool {
-        value.contains("*") || value.contains("_") || value.contains("#") || value.contains("`") || value.contains("[") || value.contains("]")
+    private static func markdownToAttributedString(_ text: String) -> AttributedString {
+        if !containsMarkdownSyntax(in: text) {
+            return AttributedString(text)
+        }
+
+        do {
+            return try AttributedString(markdown: text)
+        } catch {
+            return AttributedString(text)
+        }
+    }
+
+    private static func containsMathDelimiter(in value: String) -> Bool {
+        if !value.contains("$") && !value.contains("\\(") && !value.contains("\\[") {
+            return false
+        }
+
+        let ns = value as NSString
+        let range = NSRange(location: 0, length: ns.length)
+        return mathPattern.firstMatch(in: value, options: [], range: range) != nil
+    }
+
+    private static func containsMarkdownSyntax(in value: String) -> Bool {
+        value.rangeOfCharacter(from: plainTextChars) != nil
+    }
+
+    private static func stripMathDelimiters(_ value: String) -> String? {
+        if value.hasPrefix("$$"), value.hasSuffix("$$"), value.count >= 4 {
+            return String(value.dropFirst(2).dropLast(2))
+        }
+        if value.hasPrefix("$") && value.hasSuffix("$") && value.count >= 2 {
+            return String(value.dropFirst().dropLast())
+        }
+        if value.hasPrefix("\\(") && value.hasSuffix("\\)") && value.count >= 4 {
+            return String(value.dropFirst(2).dropLast(2))
+        }
+        if value.hasPrefix("\\[") && value.hasSuffix("\\]") && value.count >= 4 {
+            return String(value.dropFirst(2).dropLast(2))
+        }
+        return nil
+    }
+
+    private static func appendWrapTokens(_ value: String, to segments: inout [Segment], segmentID: inout Int) {
+        let ns = value as NSString
+        let range = NSRange(location: 0, length: ns.length)
+        let matches = wrapTokenPattern.matches(in: value, options: [], range: range)
+
+        if matches.isEmpty {
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return }
+            segments.append(Segment(id: segmentID, content: trimmed, isMath: false))
+            segmentID += 1
+            return
+        }
+
+        var tokenBuffer = ""
+        var tokenCount = 0
+
+        for match in matches {
+            tokenBuffer += ns.substring(with: match.range)
+            tokenCount += 1
+
+            if tokenCount >= maxWrapTokensPerSegment {
+                segments.append(Segment(id: segmentID, content: tokenBuffer, isMath: false))
+                segmentID += 1
+                tokenBuffer.removeAll(keepingCapacity: true)
+                tokenCount = 0
+            }
+        }
+
+        if !tokenBuffer.isEmpty {
+            segments.append(Segment(id: segmentID, content: tokenBuffer, isMath: false))
+            segmentID += 1
+        }
     }
 }
 
 @available(iOS 16.0, *)
 struct FlowLayout: Layout {
+    struct Cache {
+        var proposalWidth: CGFloat = -1
+        var subviewCount: Int = 0
+        var size: CGSize = .zero
+        var points: [CGPoint] = []
+        var valid = false
+    }
+
     var spacing: CGFloat
     var lineSpacing: CGFloat
     var alignment: HorizontalAlignment = .leading
 
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let result = flow(proposal: proposal, subviews: subviews)
-        return result.size
+    func makeCache(subviews: Subviews) -> Cache {
+        Cache(subviewCount: subviews.count)
     }
 
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        let result = flow(proposal: proposal, subviews: subviews)
+    func updateCache(_ cache: inout Cache, subviews: Subviews) {
+        if cache.subviewCount != subviews.count {
+            cache.subviewCount = subviews.count
+            cache.valid = false
+        }
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout Cache) -> CGSize {
+        ensureFlow(proposal: proposal, subviews: subviews, cache: &cache)
+        return cache.size
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout Cache) {
+        ensureFlow(proposal: proposal, subviews: subviews, cache: &cache)
         for (index, subview) in subviews.enumerated() {
-            let point = result.points[index]
+            guard index < cache.points.count else { continue }
+            let point = cache.points[index]
             subview.place(at: CGPoint(x: bounds.minX + point.x, y: bounds.minY + point.y), proposal: .unspecified)
         }
     }
 
-    private func flow(proposal: ProposedViewSize, subviews: Subviews) -> (size: CGSize, points: [CGPoint]) {
+    private func ensureFlow(proposal: ProposedViewSize, subviews: Subviews, cache: inout Cache) {
         let maxWidth = proposal.width ?? .infinity
+        if cache.valid && cache.proposalWidth == maxWidth && cache.subviewCount == subviews.count {
+            return
+        }
+
+        let subviewSizes = subviews.map { $0.sizeThatFits(.unspecified) }
+        let result = flow(maxWidth: maxWidth, subviewSizes: subviewSizes)
+        cache.proposalWidth = maxWidth
+        cache.subviewCount = subviews.count
+        cache.size = result.size
+        cache.points = result.points
+        cache.valid = true
+    }
+
+    private func flow(maxWidth: CGFloat, subviewSizes: [CGSize]) -> (size: CGSize, points: [CGPoint]) {
         var currentX: CGFloat = 0
         var currentY: CGFloat = 0
         var lineHeight: CGFloat = 0
@@ -267,7 +366,6 @@ struct FlowLayout: Layout {
         
         // Store items for the current line to center-align vertically.
         struct LineItem {
-            let index: Int
             let size: CGSize
             let x: CGFloat
         }
@@ -296,8 +394,7 @@ struct FlowLayout: Layout {
             }
         }
         
-        for (index, subview) in subviews.enumerated() {
-            let size = subview.sizeThatFits(.unspecified)
+        for size in subviewSizes {
             
             // Wrap to a new line when the current line overflows.
             if currentX + size.width > maxWidth && !currentLineItems.isEmpty {
@@ -312,7 +409,7 @@ struct FlowLayout: Layout {
             }
             
             // Add item to the active line.
-            currentLineItems.append(LineItem(index: index, size: size, x: currentX))
+            currentLineItems.append(LineItem(size: size, x: currentX))
             currentX += size.width + spacing
             lineHeight = max(lineHeight, size.height)
         }

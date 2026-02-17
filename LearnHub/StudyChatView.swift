@@ -136,7 +136,7 @@ struct StudyChatView: View {
                             scrollToBottom(proxy: proxy)
                         }
                     }
-                    .introspect(.scrollView, on: .iOS(.v17, .v18)) { scrollView in
+                    .introspect(.scrollView, on: .iOS(.v17)) { scrollView in
                         scrollView.keyboardDismissMode = .interactive
                         scrollView.delaysContentTouches = false
                     }

@@ -5,7 +5,7 @@ struct SummaryView: View {
     var isGuide: Bool = false
     private let parsedItems: [SummaryItem]?
     
-    enum SummaryItem: Hashable {
+    enum SummaryItem {
         case bullet(String)
         case text(String)
         case header(String, Int)
@@ -33,7 +33,7 @@ struct SummaryView: View {
                 
                 if let items = parsedItems {
                     LazyVStack(alignment: .leading, spacing: 8) {
-                        ForEach(items, id: \.self) { item in
+                        ForEach(Array(items.enumerated()), id: \.offset) { _, item in
                             switch item {
                             case .bullet(let text):
                                 HStack(alignment: .top, spacing: 8) {
