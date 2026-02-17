@@ -47,6 +47,16 @@ struct WidgetData: Codable {
 
 final class GamificationManager: ObservableObject {
     static let shared = GamificationManager()
+
+    enum BoosterDurationUnit {
+        case hours
+        case days
+    }
+
+    struct HybridPrice {
+        let coins: Int
+        let xp: Int
+    }
     
     @Published var showAchievementUnlocked: Bool = false
     @Published var unlockedAchievement: AchievementType?
@@ -103,16 +113,14 @@ final class GamificationManager: ObservableObject {
             widgetData = existing
             widgetData.studySets = widgetSets
             
-            // Update the derived "cards to review" count.
-            let cardsToReview = widgetSets.reduce(0) { count, set in
-                count + set.flashcards.filter { !$0.isMastered }.count
-            }
-            widgetData.cardsToReview = cardsToReview
+            // Update the derived "cards to review" count based on due spaced-repetition cards.
+            widgetData.cardsToReview = dueFlashcardCount(from: sets)
             
         } else {
             // Fallback if no widget data exists yet.
             widgetData = WidgetData.placeholder
             widgetData.studySets = widgetSets
+            widgetData.cardsToReview = dueFlashcardCount(from: sets)
         }
         
         if let userDefaults = UserDefaults(suiteName: "group.com.shaarav4795.LearnHub"),
@@ -149,8 +157,13 @@ final class GamificationManager: ObservableObject {
             setsToSave = currentSets
         }
         
-        let cardsToReview = setsToSave.reduce(0) { count, set in
-            count + set.flashcards.filter { !$0.isMastered }.count
+        let cardsToReview: Int
+        if let studySets {
+            cardsToReview = dueFlashcardCount(from: studySets)
+        } else {
+            cardsToReview = setsToSave.reduce(0) { count, set in
+                count + set.flashcards.filter { !$0.isMastered }.count
+            }
         }
         
         let widgetData = WidgetData(
@@ -172,6 +185,16 @@ final class GamificationManager: ObservableObject {
         
         // Trigger a widget timeline reload.
         WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    private func dueFlashcardCount(from sets: [StudySet]) -> Int {
+        let now = Date()
+        return sets.reduce(0) { count, set in
+            count + set.flashcards.filter { card in
+                guard let due = card.reviewDueDate else { return false }
+                return due <= now
+            }.count
+        }
     }
     
     // MARK: - User profile management
@@ -196,7 +219,7 @@ final class GamificationManager: ObservableObject {
     @MainActor
     func addXP(_ amount: Int, to profile: UserProfile, context: ModelContext) {
         let previousLevel = profile.level
-        let multiplier = XPRewards.streakMultiplier(for: profile.currentStreak)
+        let multiplier = totalXPMultiplier(for: profile, context: context)
         let actualXP = Int(Double(amount) * multiplier)
         
         profile.totalXP += actualXP
@@ -249,6 +272,165 @@ final class GamificationManager: ObservableObject {
         updateWidgetData(from: profile)
         return true
     }
+
+    @MainActor
+    func spendXP(_ amount: Int, from profile: UserProfile, context: ModelContext) -> Bool {
+        guard profile.totalXP >= amount else { return false }
+        profile.totalXP -= amount
+        try? context.save()
+        updateWidgetData(from: profile)
+        return true
+    }
+
+    func currentShopTier(for profile: UserProfile) -> ShopXPTier {
+        ShopXPTier.forTotalXP(profile.totalXP)
+    }
+
+    func totalXPMultiplierPreview(for profile: UserProfile, at date: Date = Date()) -> Double {
+        let streakMultiplier = XPRewards.streakMultiplier(for: profile.currentStreak)
+        let boosterMultiplier = profile.activeXPBoosters
+            .filter { $0.endsAt > date }
+            .reduce(1.0) { partial, booster in
+                partial * (1.0 + Double(booster.percentBonus) / 100.0)
+            }
+        return streakMultiplier * min(ShopEconomy.maxEffectiveBoosterMultiplier, boosterMultiplier)
+    }
+
+    @MainActor
+    private func totalXPMultiplier(for profile: UserProfile, context: ModelContext) -> Double {
+        removeExpiredBoosters(for: profile, context: context)
+        return totalXPMultiplierPreview(for: profile)
+    }
+
+    @MainActor
+    private func removeExpiredBoosters(for profile: UserProfile, context: ModelContext) {
+        let now = Date()
+        let expired = profile.activeXPBoosters.filter { $0.endsAt <= now }
+        guard expired.isEmpty == false else { return }
+
+        for booster in expired {
+            context.delete(booster)
+        }
+        profile.activeXPBoosters.removeAll { $0.endsAt <= now }
+        try? context.save()
+    }
+
+    func streakFreezeCoinCost(currentTokens: Int) -> Int {
+        let safeTokenCount = max(0, min(currentTokens, ShopEconomy.maxStreakFreezeTokens))
+        let exponential = 45.0 * pow(1.18, Double(safeTokenCount))
+        let surcharge = Double(max(0, safeTokenCount - 4) * 5)
+        let raw = exponential + surcharge
+        return max(10, Int((raw / 5.0).rounded() * 5.0))
+    }
+
+    func xpBoosterCoinCost(percent: Int, durationValue: Int, unit: BoosterDurationUnit, activeCount: Int) -> Int {
+        let boundedPercent = max(25, min(percent, 300))
+        let durationHours = unit == .hours ? max(1, durationValue) : max(1, durationValue) * 24
+        let durationComponent = 5.0 * sqrt(Double(durationHours))
+        let interaction = 0.08 * Double(boundedPercent) * log(1.0 + Double(durationHours))
+        let base = 12.0 + (0.35 * Double(boundedPercent)) + durationComponent + interaction
+        let stackFactor = 1.0 + (0.22 * Double(max(0, activeCount)))
+        let raw = base * stackFactor
+        return max(15, Int((raw / 5.0).rounded() * 5.0))
+    }
+
+    func xpBoosterTierRequirement(percent: Int, durationHours: Int) -> ShopXPTier {
+        let tierByPercent: ShopXPTier
+        switch percent {
+        case ...50:
+            tierByPercent = .novice
+        case ...100:
+            tierByPercent = .learner
+        case ...150:
+            tierByPercent = .scholar
+        case ...250:
+            tierByPercent = .expert
+        default:
+            tierByPercent = .master
+        }
+
+        if durationHours >= 24 && tierByPercent.rawValue < ShopXPTier.scholar.rawValue {
+            return .scholar
+        }
+        return tierByPercent
+    }
+
+    func hybridPrice(forCoinPrice coinPrice: Int, xpShare: Double) -> HybridPrice {
+        let clampedShare = max(0, min(xpShare, ShopEconomy.maxXPShare))
+        let coins = max(0, Int((Double(coinPrice) * (1.0 - clampedShare)).rounded()))
+        let xp = max(0, Int((Double(coinPrice) * clampedShare * ShopEconomy.xpPerCoinRate).rounded()))
+        return HybridPrice(coins: coins, xp: xp)
+    }
+
+    func canAffordHybridPrice(_ price: HybridPrice, profile: UserProfile) -> Bool {
+        profile.coins >= price.coins && profile.totalXP >= price.xp
+    }
+
+    @MainActor
+    func spendHybridPrice(_ price: HybridPrice, from profile: UserProfile, context: ModelContext) -> Bool {
+        guard canAffordHybridPrice(price, profile: profile) else { return false }
+        profile.coins -= price.coins
+        profile.totalXP -= price.xp
+        try? context.save()
+        updateWidgetData(from: profile)
+        return true
+    }
+
+    @MainActor
+    func purchaseStreakFreeze(for profile: UserProfile, xpShare: Double, context: ModelContext) -> Bool {
+        guard profile.streakFreezeTokens < ShopEconomy.maxStreakFreezeTokens else { return false }
+        guard currentShopTier(for: profile).rawValue >= ShopXPTier.learner.rawValue else { return false }
+
+        let coinPrice = streakFreezeCoinCost(currentTokens: profile.streakFreezeTokens)
+        let hybrid = hybridPrice(forCoinPrice: coinPrice, xpShare: xpShare)
+        guard spendHybridPrice(hybrid, from: profile, context: context) else { return false }
+
+        profile.streakFreezeTokens += 1
+        try? context.save()
+        updateWidgetData(from: profile)
+        return true
+    }
+
+    @MainActor
+    func purchaseXPBooster(
+        percent: Int,
+        durationValue: Int,
+        durationUnit: BoosterDurationUnit,
+        xpShare: Double,
+        for profile: UserProfile,
+        context: ModelContext
+    ) -> Bool {
+        removeExpiredBoosters(for: profile, context: context)
+
+        let tier = currentShopTier(for: profile)
+        let clampedPercent = max(25, min(percent, 300))
+        let durationHours = durationUnit == .hours ? max(1, durationValue) : max(1, durationValue) * 24
+        guard clampedPercent <= tier.maxBoosterPercent else { return false }
+        let requiredTier = xpBoosterTierRequirement(percent: clampedPercent, durationHours: durationHours)
+        guard tier.rawValue >= requiredTier.rawValue else { return false }
+
+        let coinPrice = xpBoosterCoinCost(percent: clampedPercent, durationValue: durationValue, unit: durationUnit, activeCount: profile.activeXPBoosters.count)
+        let hybrid = hybridPrice(forCoinPrice: coinPrice, xpShare: xpShare)
+        guard spendHybridPrice(hybrid, from: profile, context: context) else { return false }
+
+        let now = Date()
+        if let matchingActive = profile.activeXPBoosters.first(where: { $0.percentBonus == clampedPercent && $0.endsAt > now }) {
+            matchingActive.endsAt = matchingActive.endsAt.addingTimeInterval(TimeInterval(durationHours * 3600))
+        } else {
+            let booster = ActiveXPBooster(
+                percentBonus: clampedPercent,
+                startsAt: now,
+                endsAt: now.addingTimeInterval(TimeInterval(durationHours * 3600))
+            )
+            booster.userProfile = profile
+            context.insert(booster)
+            profile.activeXPBoosters.append(booster)
+        }
+
+        try? context.save()
+        updateWidgetData(from: profile)
+        return true
+    }
     
     // MARK: - Streak management
     
@@ -278,10 +460,25 @@ final class GamificationManager: ObservableObject {
                 // Evaluate streak achievements.
                 checkStreakAchievements(profile: profile, context: context)
             } else {
-                // Streak broken: reset to day one.
-                profile.currentStreak = 1
-                addXP(XPRewards.dailyLoginBonus, to: profile, context: context)
-                addCoins(CoinRewards.dailyLogin, to: profile, context: context)
+                // Consume freeze tokens for missed days; reset if uncovered days remain.
+                let missedDays = max(0, daysDifference - 1)
+                let freezeNeeded = missedDays
+                let freezeUsed = min(profile.streakFreezeTokens, freezeNeeded)
+                profile.streakFreezeTokens -= freezeUsed
+
+                if freezeUsed == freezeNeeded {
+                    profile.currentStreak += 1
+                    if profile.currentStreak > profile.longestStreak {
+                        profile.longestStreak = profile.currentStreak
+                    }
+                    addXP(XPRewards.dailyLoginBonus + (XPRewards.streakBonus * profile.currentStreak), to: profile, context: context)
+                    addCoins(CoinRewards.dailyLogin, to: profile, context: context)
+                    checkStreakAchievements(profile: profile, context: context)
+                } else {
+                    profile.currentStreak = 1
+                    addXP(XPRewards.dailyLoginBonus, to: profile, context: context)
+                    addCoins(CoinRewards.dailyLogin, to: profile, context: context)
+                }
             }
         } else {
             // First-ever study session initializes the streak.
@@ -564,6 +761,12 @@ final class GamificationManager: ObservableObject {
     }
     
     // MARK: - Shop functions
+
+    @MainActor
+    func activeBoosters(for profile: UserProfile, context: ModelContext) -> [ActiveXPBooster] {
+        removeExpiredBoosters(for: profile, context: context)
+        return profile.activeXPBoosters.sorted { $0.endsAt < $1.endsAt }
+    }
     
     @MainActor
     func purchaseAvatar(_ avatar: AvatarItem, for profile: UserProfile, context: ModelContext) -> Bool {
@@ -586,6 +789,24 @@ final class GamificationManager: ObservableObject {
         try? context.save()
         return true
     }
+
+    @MainActor
+    func purchaseAvatar(_ avatar: AvatarItem, xpShare: Double, for profile: UserProfile, context: ModelContext) -> Bool {
+        if profile.unlockedItems.contains(where: { $0.itemId == avatar.id && $0.itemType == "avatar" }) {
+            return false
+        }
+
+        guard profile.level >= avatar.requiredLevel else { return false }
+        let price = hybridPrice(forCoinPrice: avatar.cost, xpShare: xpShare)
+        guard spendHybridPrice(price, from: profile, context: context) else { return false }
+
+        let item = UnlockedItem(itemId: avatar.id, itemType: "avatar")
+        item.userProfile = profile
+        context.insert(item)
+
+        try? context.save()
+        return true
+    }
     
     @MainActor
     func purchaseTheme(_ theme: ThemeItem, for profile: UserProfile, context: ModelContext) -> Bool {
@@ -605,6 +826,24 @@ final class GamificationManager: ObservableObject {
         item.userProfile = profile
         context.insert(item)
         
+        try? context.save()
+        return true
+    }
+
+    @MainActor
+    func purchaseTheme(_ theme: ThemeItem, xpShare: Double, for profile: UserProfile, context: ModelContext) -> Bool {
+        if profile.unlockedItems.contains(where: { $0.itemId == theme.id && $0.itemType == "theme" }) {
+            return false
+        }
+
+        guard profile.level >= theme.requiredLevel else { return false }
+        let price = hybridPrice(forCoinPrice: theme.cost, xpShare: xpShare)
+        guard spendHybridPrice(price, from: profile, context: context) else { return false }
+
+        let item = UnlockedItem(itemId: theme.id, itemType: "theme")
+        item.userProfile = profile
+        context.insert(item)
+
         try? context.save()
         return true
     }

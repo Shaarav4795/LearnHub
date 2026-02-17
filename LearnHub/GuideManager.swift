@@ -123,7 +123,7 @@ struct GuideCallout: View {
                     } label: {
                         Image(systemName: "chevron.down.circle.fill")
                             .foregroundColor(.secondary)
-                        Text("Hide")
+                        Text("Okay")
                     }
                     .font(.subheadline)
                 }

@@ -15,21 +15,61 @@ struct LearnHubApp: App {
             Question.self,
             ChatMessage.self,
             UserProfile.self,
+            ActiveXPBooster.self,
             Achievement.self,
             UnlockedItem.self,
         ])
-        let persistentConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+        
+        // Try to create with current schema
+        let persistentConfiguration = ModelConfiguration(
+            schema: schema,
+            isStoredInMemoryOnly: false
+        )
 
         do {
             return try ModelContainer(for: schema, configurations: [persistentConfiguration])
-        } catch {
-            print("Initial ModelContainer creation failed: \(error)")
-
+        } catch let error as NSError {
+            // Schema mismatch: old store exists but schema changed
+            // Delete incompatible store and create fresh
+            print("⚠️ ModelContainer initialization failed (likely schema mismatch): \(error)")
+            print("📦 Attempting to migrate by rebuilding persistent store...")
+            
             do {
-                let inMemoryConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
-                return try ModelContainer(for: schema, configurations: [inMemoryConfiguration])
+                // Delete the incompatible store file
+                if let url = try? FileManager.default.url(
+                    for: .applicationSupportDirectory,
+                    in: .userDomainMask,
+                    appropriateFor: nil,
+                    create: true
+                ) {
+                    let storeURL = url.appending(component: "default.store")
+                    if FileManager.default.fileExists(atPath: storeURL.path) {
+                        try FileManager.default.removeItem(at: storeURL)
+                        print("✅ Deleted incompatible store file at: \(storeURL.path)")
+                    }
+                }
+                
+                // Create fresh container with new schema
+                let freshConfig = ModelConfiguration(
+                    schema: schema,
+                    isStoredInMemoryOnly: false
+                )
+                let container = try ModelContainer(for: schema, configurations: [freshConfig])
+                print("✅ Successfully created new ModelContainer with updated schema")
+                return container
             } catch {
-                fatalError("Could not recover ModelContainer after resetting store: \(error)")
+                print("❌ Failed to recover after schema migration: \(error)")
+                print("⚠️ Falling back to in-memory storage (data will not persist)")
+                
+                do {
+                    let inMemoryConfig = ModelConfiguration(
+                        schema: schema,
+                        isStoredInMemoryOnly: true
+                    )
+                    return try ModelContainer(for: schema, configurations: [inMemoryConfig])
+                } catch {
+                    fatalError("❌ Could not create in-memory container: \(error)")
+                }
             }
         }
     }()

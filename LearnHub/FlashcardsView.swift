@@ -259,7 +259,7 @@ struct FlashcardsView: View {
     private func calculateXPEarned() -> Int {
         var xp = cardsStudied * XPRewards.flashcardStudied
         xp += cardsMastered * XPRewards.flashcardMastered
-        let multiplier = XPRewards.streakMultiplier(for: profile.currentStreak)
+        let multiplier = gamificationManager.totalXPMultiplierPreview(for: profile)
         return Int(Double(xp) * multiplier)
     }
 }

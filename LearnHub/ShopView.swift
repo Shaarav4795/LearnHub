@@ -8,50 +8,91 @@ struct ShopView: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var profiles: [UserProfile]
     @StateObject private var gamificationManager = GamificationManager.shared
-    
+
     @State private var selectedTab: ShopTab = .avatars
     @State private var showPurchaseAlert = false
-    @State private var purchaseMessage = ""
-    @State private var pendingPurchase: (() -> Void)?
+    @State private var pendingPurchase: (() -> Bool)?
     @State private var selectedItemName = ""
-    @State private var selectedItemCost = 0
+    @State private var selectedItemCoins = 0
+    @State private var selectedItemXP = 0
     @State private var purchaseConfettiCounter = 0
     @State private var isProcessingPurchase = false
     @State private var isCatalogBooting = true
-    
+
+    @State private var xpShare: Double = 0.25
+    @State private var boosterPercent: Int = 50
+    @State private var boosterDurationValue: Int = 4
+    @State private var boosterDurationUnit: GamificationManager.BoosterDurationUnit = .hours
+
     private var profile: UserProfile {
         if let existing = profiles.first {
             return existing
         }
         return gamificationManager.getOrCreateProfile(context: modelContext)
     }
-    
+
+    private var activeBoosters: [ActiveXPBooster] {
+        gamificationManager.activeBoosters(for: profile, context: modelContext)
+    }
+
+    private var shopTier: ShopXPTier {
+        gamificationManager.currentShopTier(for: profile)
+    }
+
+    private var boosterDurationHours: Int {
+        boosterDurationUnit == .hours ? max(1, boosterDurationValue) : max(1, boosterDurationValue) * 24
+    }
+
+    private var boosterTierRequirement: ShopXPTier {
+        gamificationManager.xpBoosterTierRequirement(percent: boosterPercent, durationHours: boosterDurationHours)
+    }
+
+    private var canConfigureBoosterAtCurrentTier: Bool {
+        shopTier.maxBoosterPercent >= boosterPercent && shopTier.rawValue >= boosterTierRequirement.rawValue
+    }
+
+    private var boosterBaseCoinPrice: Int {
+        gamificationManager.xpBoosterCoinCost(
+            percent: boosterPercent,
+            durationValue: boosterDurationValue,
+            unit: boosterDurationUnit,
+            activeCount: activeBoosters.count
+        )
+    }
+
+    private var boosterHybridPrice: GamificationManager.HybridPrice {
+        gamificationManager.hybridPrice(forCoinPrice: boosterBaseCoinPrice, xpShare: xpShare)
+    }
+
     enum ShopTab: String, CaseIterable {
         case avatars = "Avatars"
         case themes = "Themes"
+        case consumables = "Consumables"
     }
-    
+
+    private var avatarColumns: [GridItem] {
+        [GridItem(.flexible()), GridItem(.flexible())]
+    }
+
+    private var themeColumns: [GridItem] {
+        [GridItem(.flexible()), GridItem(.flexible())]
+    }
+
     var body: some View {
         ZStack {
             VStack(spacing: 0) {
-                // Coin Balance Header
-                coinBalanceHeader
-                
-                // Tab Picker
+                shopHeader
                 tabPicker
-                
-                // Content
+
                 ScrollView {
                     if isCatalogBooting {
                         ShopSkeletonView(tab: selectedTab)
                             .padding()
                     } else {
-                        switch selectedTab {
-                        case .avatars:
-                            avatarsGrid
-                        case .themes:
-                            themesGrid
-                        }
+                        tabContent
+                            .padding(.horizontal)
+                            .padding(.bottom, 18)
+                            .transition(.opacity.combined(with: .scale(scale: 0.98)))
                     }
                 }
                 .introspect(.scrollView, on: .iOS(.v17)) { scrollView in
@@ -62,18 +103,19 @@ struct ShopView: View {
             .background(Color(uiColor: .systemGroupedBackground))
             .navigationTitle("Shop")
             .navigationBarTitleDisplayMode(.inline)
-            .confettiCannon(counter: $purchaseConfettiCounter, num: 28, rainHeight: 720)
+            .confettiCannon(counter: $purchaseConfettiCounter, num: 34, rainHeight: 720)
+            .animation(.spring(response: 0.35, dampingFraction: 0.82), value: selectedTab)
             .onAppear {
                 guard isCatalogBooting else { return }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
-                    withAnimation(.easeOut(duration: 0.25)) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    withAnimation(.easeOut(duration: 0.22)) {
                         isCatalogBooting = false
                     }
                 }
             }
-            
+
             if showPurchaseAlert {
-                Color.black.opacity(0.4)
+                Color.black.opacity(0.42)
                     .ignoresSafeArea()
                     .onTapGesture {
                         HapticsManager.shared.playTap()
@@ -82,17 +124,20 @@ struct ShopView: View {
                         }
                     }
                     .zIndex(1)
-                
+
                 PurchaseConfirmationView(
                     itemName: selectedItemName,
-                    itemCost: selectedItemCost,
+                    itemCoins: selectedItemCoins,
+                    itemXP: selectedItemXP,
                     isProcessing: isProcessingPurchase,
                     onConfirm: {
                         guard isProcessingPurchase == false else { return }
                         isProcessingPurchase = true
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.28) {
-                            pendingPurchase?()
-                            purchaseConfettiCounter += 1
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                            let success = pendingPurchase?() ?? false
+                            if success {
+                                purchaseConfettiCounter += selectedItemXP > 0 ? 2 : 1
+                            }
                             isProcessingPurchase = false
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                                 showPurchaseAlert = false
@@ -111,59 +156,99 @@ struct ShopView: View {
             }
         }
     }
-    
-    // MARK: - Coin Balance Header
-    
-    private var coinBalanceHeader: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Your Balance")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                
-                HStack(spacing: 6) {
-                    Image(systemName: "dollarsign.circle.fill")
-                        .font(.title2)
-                        .foregroundColor(.yellow)
-                    
-                    Text("\(profile.coins)")
-                        .font(.title.bold())
+
+    private var tabContent: some View {
+        Group {
+            switch selectedTab {
+            case .avatars:
+                avatarsGrid
+            case .themes:
+                themesGrid
+            case .consumables:
+                consumablesSection
+            }
+        }
+    }
+
+    // MARK: - Header
+
+    private var shopHeader: some View {
+        VStack(spacing: 12) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Balance")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+
+                    HStack(spacing: 10) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "dollarsign.circle.fill")
+                                .foregroundColor(.yellow)
+                            Text("\(profile.coins)")
+                                .font(.headline.bold())
+                        }
+                        HStack(spacing: 4) {
+                            Image(systemName: "star.fill")
+                                .foregroundColor(.orange)
+                            Text("\(profile.totalXP)")
+                                .font(.headline.bold())
+                        }
+                    }
+                }
+
+                Spacer()
+
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text("Tier")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    Text(shopTier.title)
+                        .font(.subheadline.bold())
+
+                    Text("Lvl \(profile.level)")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                 }
             }
-            
-            Spacer()
-            
-            VStack(alignment: .trailing, spacing: 4) {
-                Text("Level \(profile.level)")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                
-                HStack(spacing: 4) {
-                    Image(systemName: "star.fill")
-                        .foregroundColor(.yellow)
-                    Text("\(profile.totalXP) XP")
-                        .font(.subheadline.bold())
-                }
+
+            HStack(spacing: 10) {
+                statPill(icon: "snowflake", text: "Freeze x\(profile.streakFreezeTokens)", tint: .cyan)
+                statPill(icon: "bolt.fill", text: "Boost x\(activeBoosters.count)", tint: .purple)
+                statPill(icon: "sparkles", text: String(format: "x%.2f XP", gamificationManager.totalXPMultiplierPreview(for: profile)), tint: .green)
             }
         }
         .padding()
         .background(
             LinearGradient(
-                colors: [Color.accentColor.opacity(0.14), Color.accentColor.opacity(0.05)],
+                colors: [Color.accentColor.opacity(0.18), Color.accentColor.opacity(0.06)],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
         )
         .overlay(alignment: .trailing) {
             CelebrationLottieView(animationName: "celebration", play: true)
-                .frame(width: 42, height: 42)
-                .opacity(0.22)
+                .frame(width: 40, height: 40)
+                .opacity(0.24)
                 .padding(.trailing, 8)
         }
     }
-    
-    // MARK: - Tab Picker
-    
+
+    private func statPill(icon: String, text: String, tint: Color) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: icon)
+            Text(text)
+                .lineLimit(1)
+        }
+        .font(.caption.bold())
+        .foregroundColor(tint)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(tint.opacity(0.14))
+        .clipShape(Capsule())
+    }
+
+    // MARK: - Tabs
+
     private var tabPicker: some View {
         Picker("Shop Category", selection: $selectedTab) {
             ForEach(ShopTab.allCases, id: \.self) { tab in
@@ -176,90 +261,385 @@ struct ShopView: View {
             HapticsManager.shared.playTap()
         }
     }
-    
-    // MARK: - Avatars Grid
-    
-    private var avatarsGrid: some View {
-        LazyVGrid(columns: [
-            GridItem(.adaptive(minimum: 150, maximum: 220), spacing: 14)
-        ], spacing: 14) {
-            ForEach(AvatarItem.allAvatars) { avatar in
-                AvatarShopCard(
-                    avatar: avatar,
-                    isOwned: gamificationManager.isItemOwned(avatar.id, itemType: "avatar", profile: profile),
-                    isSelected: profile.selectedAvatarId == avatar.id,
-                    isLocked: profile.level < avatar.requiredLevel,
-                    canAfford: profile.coins >= avatar.cost,
-                    onSelect: {
-                        _ = gamificationManager.selectAvatar(avatar.id, for: profile, context: modelContext)
-                    },
-                    onPurchase: {
-                        selectedItemName = avatar.name
-                        selectedItemCost = avatar.cost
-                        pendingPurchase = {
-                            if gamificationManager.purchaseAvatar(avatar, for: profile, context: modelContext) {
-                                _ = gamificationManager.selectAvatar(avatar.id, for: profile, context: modelContext)
-                            }
-                        }
-                        withAnimation {
-                            showPurchaseAlert = true
-                        }
-                    }
-                )
+
+    // MARK: - Shared Spend Controls
+
+    private var xpSpendCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Hybrid Spend")
+                    .font(.subheadline.bold())
+                Spacer()
+                Text("XP Share: \(Int(xpShare * 100))%")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
+
+            Slider(value: $xpShare, in: 0...ShopEconomy.maxXPShare, step: 0.05)
+                .tint(.orange)
+
+            Text("Use XP to reduce coin cost. Higher XP share spends more XP per purchase.")
+                .font(.caption)
+                .foregroundColor(.secondary)
         }
         .padding()
+        .background(Color(uiColor: .secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color.orange.opacity(0.2), lineWidth: 1)
+        )
     }
-    
-    // MARK: - Themes Grid
-    
-    private var themesGrid: some View {
-        LazyVGrid(columns: [
-            GridItem(.flexible())
-        ], spacing: 14) {
-            ForEach(ThemeItem.allThemes) { theme in
-                ThemeShopCard(
-                    theme: theme,
-                    isOwned: gamificationManager.isItemOwned(theme.id, itemType: "theme", profile: profile),
-                    isSelected: profile.selectedThemeId == theme.id,
-                    isLocked: profile.level < theme.requiredLevel,
-                    canAfford: profile.coins >= theme.cost,
-                    onSelect: {
-                        _ = gamificationManager.selectTheme(theme.id, for: profile, context: modelContext)
-                    },
-                    onPurchase: {
-                        selectedItemName = theme.name
-                        selectedItemCost = theme.cost
-                        pendingPurchase = {
-                            if gamificationManager.purchaseTheme(theme, for: profile, context: modelContext) {
-                                _ = gamificationManager.selectTheme(theme.id, for: profile, context: modelContext)
+
+    // MARK: - Avatars
+
+    private var avatarsGrid: some View {
+        VStack(spacing: 12) {
+            xpSpendCard
+
+            LazyVGrid(columns: avatarColumns, spacing: 12) {
+                ForEach(AvatarItem.allAvatars) { avatar in
+                    let price = gamificationManager.hybridPrice(forCoinPrice: avatar.cost, xpShare: xpShare)
+                    AvatarShopCard(
+                        avatar: avatar,
+                        price: price,
+                        isOwned: gamificationManager.isItemOwned(avatar.id, itemType: "avatar", profile: profile),
+                        isSelected: profile.selectedAvatarId == avatar.id,
+                        isLocked: profile.level < avatar.requiredLevel,
+                        canAfford: gamificationManager.canAffordHybridPrice(price, profile: profile),
+                        onSelect: {
+                            _ = gamificationManager.selectAvatar(avatar.id, for: profile, context: modelContext)
+                        },
+                        onPurchase: {
+                            selectedItemName = avatar.name
+                            selectedItemCoins = price.coins
+                            selectedItemXP = price.xp
+                            pendingPurchase = {
+                                if gamificationManager.purchaseAvatar(avatar, xpShare: xpShare, for: profile, context: modelContext) {
+                                    _ = gamificationManager.selectAvatar(avatar.id, for: profile, context: modelContext)
+                                    return true
+                                }
+                                return false
+                            }
+                            withAnimation {
+                                showPurchaseAlert = true
                             }
                         }
-                        withAnimation {
-                            showPurchaseAlert = true
+                    )
+                    .transition(.opacity.combined(with: .scale))
+                }
+            }
+        }
+        .padding(.top, 2)
+    }
+
+    // MARK: - Themes
+
+    private var themesGrid: some View {
+        VStack(spacing: 12) {
+            xpSpendCard
+
+            LazyVGrid(columns: themeColumns, spacing: 12) {
+                ForEach(ThemeItem.allThemes) { theme in
+                    let price = gamificationManager.hybridPrice(forCoinPrice: theme.cost, xpShare: xpShare)
+                    ThemeShopCard(
+                        theme: theme,
+                        price: price,
+                        isOwned: gamificationManager.isItemOwned(theme.id, itemType: "theme", profile: profile),
+                        isSelected: profile.selectedThemeId == theme.id,
+                        isLocked: profile.level < theme.requiredLevel,
+                        canAfford: gamificationManager.canAffordHybridPrice(price, profile: profile),
+                        onSelect: {
+                            _ = gamificationManager.selectTheme(theme.id, for: profile, context: modelContext)
+                        },
+                        onPurchase: {
+                            selectedItemName = theme.name
+                            selectedItemCoins = price.coins
+                            selectedItemXP = price.xp
+                            pendingPurchase = {
+                                if gamificationManager.purchaseTheme(theme, xpShare: xpShare, for: profile, context: modelContext) {
+                                    _ = gamificationManager.selectTheme(theme.id, for: profile, context: modelContext)
+                                    return true
+                                }
+                                return false
+                            }
+                            withAnimation {
+                                showPurchaseAlert = true
+                            }
                         }
+                    )
+                    .transition(.opacity.combined(with: .scale))
+                }
+            }
+        }
+        .padding(.top, 2)
+    }
+
+    // MARK: - Consumables
+
+    private var consumablesSection: some View {
+        VStack(spacing: 12) {
+            xpSpendCard
+            
+            // Tier requirement warning banner
+            if shopTier.rawValue < ShopXPTier.learner.rawValue {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Image(systemName: "lock.circle.fill")
+                            .foregroundColor(.orange)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Locked")
+                                .font(.caption.bold())
+                            Text("Unlock at Tier Learner (\(ShopXPTier.learner.minXP - profile.totalXP) XP to go)")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        Spacer()
                     }
-                )
+                }
+                .padding()
+                .background(Color.orange.opacity(0.12))
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.orange.opacity(0.2), lineWidth: 1))
+            }
+
+            streakFreezeCard
+            xpBoosterCard
+            activeEffectsCard
+        }
+        .padding(.top, 2)
+    }
+
+    private var streakFreezeCard: some View {
+        let baseCoins = gamificationManager.streakFreezeCoinCost(currentTokens: profile.streakFreezeTokens)
+        let price = gamificationManager.hybridPrice(forCoinPrice: baseCoins, xpShare: xpShare)
+        let canBuy = profile.streakFreezeTokens < ShopEconomy.maxStreakFreezeTokens &&
+            gamificationManager.canAffordHybridPrice(price, profile: profile) &&
+            shopTier.rawValue >= ShopXPTier.learner.rawValue
+
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                VStack(alignment: .leading, spacing: 6) {
+                    Label("Streak Freeze", systemImage: "snowflake")
+                        .font(.headline)
+                    Text("Skip one day without losing your streak")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .lineLimit(2)
+                }
+                Spacer()
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text("Owned")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                    Text("\(profile.streakFreezeTokens)/\(ShopEconomy.maxStreakFreezeTokens)")
+                        .font(.subheadline.bold())
+                        .foregroundColor(.cyan)
+                }
+            }
+
+            HStack {
+                PriceTagView(price: price)
+                Spacer()
+                Button("Buy Token") {
+                    HapticsManager.shared.playTap()
+                    selectedItemName = "Streak Freeze"
+                    selectedItemCoins = price.coins
+                    selectedItemXP = price.xp
+                    pendingPurchase = {
+                        gamificationManager.purchaseStreakFreeze(for: profile, xpShare: xpShare, context: modelContext)
+                    }
+                    withAnimation {
+                        showPurchaseAlert = true
+                    }
+                }
+                .font(.subheadline.bold())
+                .foregroundColor(.cyan)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(Color.cyan.opacity(0.15))
+                .clipShape(Capsule())
+                .disabled(!canBuy)
+                .buttonStyle(PressScaleButtonStyle())
             }
         }
         .padding()
+        .background(Color(uiColor: .secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color.cyan.opacity(0.2), lineWidth: 1)
+        )
+    }
+
+    private var xpBoosterCard: some View {
+        let canAfford = gamificationManager.canAffordHybridPrice(boosterHybridPrice, profile: profile)
+        let canBuy = canAfford && canConfigureBoosterAtCurrentTier
+
+        return VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 6) {
+                Label("XP Booster", systemImage: "bolt.fill")
+                    .font(.headline)
+                Text("Earn \(boosterPercent)% more XP for \(boosterDurationValue) \(boosterDurationUnit == .hours ? "hours" : "days")")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            Divider()
+
+            VStack(spacing: 12) {
+                HStack {
+                    Text("XP Bonus")
+                        .font(.subheadline)
+                    Spacer()
+                    Stepper(value: $boosterPercent, in: 25...min(300, shopTier.maxBoosterPercent), step: 25) {
+                        Text("+\(boosterPercent)%")
+                            .font(.subheadline.bold())
+                            .foregroundColor(.purple)
+                    }
+                }
+
+                HStack {
+                    Text("Duration")
+                        .font(.subheadline)
+                    Spacer()
+                    Stepper(value: $boosterDurationValue, in: 1...72) {
+                        HStack(spacing: 4) {
+                            Text("\(boosterDurationValue)")
+                                .font(.subheadline.bold())
+                                .foregroundColor(.purple)
+                            Text(boosterDurationUnit == .hours ? "hours" : "days")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+
+                Picker("Duration Unit", selection: $boosterDurationUnit) {
+                    Text("Hours").tag(GamificationManager.BoosterDurationUnit.hours)
+                    Text("Days").tag(GamificationManager.BoosterDurationUnit.days)
+                }
+                .pickerStyle(.segmented)
+                .font(.caption)
+            }
+
+            HStack {
+                PriceTagView(price: boosterHybridPrice)
+                Spacer()
+                Button("Activate") {
+                    HapticsManager.shared.playTap()
+                    selectedItemName = "XP Booster (+\(boosterPercent)%)"
+                    selectedItemCoins = boosterHybridPrice.coins
+                    selectedItemXP = boosterHybridPrice.xp
+                    pendingPurchase = {
+                        gamificationManager.purchaseXPBooster(
+                            percent: boosterPercent,
+                            durationValue: boosterDurationValue,
+                            durationUnit: boosterDurationUnit,
+                            xpShare: xpShare,
+                            for: profile,
+                            context: modelContext
+                        )
+                    }
+                    withAnimation {
+                        showPurchaseAlert = true
+                    }
+                }
+                .font(.subheadline.bold())
+                .foregroundColor(.purple)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(Color.purple.opacity(0.15))
+                .clipShape(Capsule())
+                .disabled(!canBuy)
+                .buttonStyle(PressScaleButtonStyle())
+            }
+        }
+        .padding()
+        .background(Color(uiColor: .secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color.purple.opacity(0.2), lineWidth: 1)
+        )
+    }
+
+    private var activeEffectsCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Active Effects")
+                    .font(.subheadline.bold())
+                Spacer()
+                Text(String(format: "x%.2f total", gamificationManager.totalXPMultiplierPreview(for: profile)))
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            if activeBoosters.isEmpty {
+                Text("No active boosters")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            } else {
+                ForEach(activeBoosters, id: \.id) { booster in
+                    HStack {
+                        Text("+\(booster.percentBonus)% XP")
+                            .font(.caption.bold())
+                        Spacer()
+                        Text(booster.endsAt, style: .relative)
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
+        }
+        .padding()
+        .background(Color(uiColor: .secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }
 
-// MARK: - Avatar Shop Card
+private struct PriceTagView: View {
+    let price: GamificationManager.HybridPrice
+
+    var body: some View {
+        HStack(spacing: 8) {
+            HStack(spacing: 3) {
+                Image(systemName: "dollarsign.circle.fill")
+                    .foregroundColor(.yellow)
+                    .font(.caption)
+                Text("\(price.coins)")
+                    .font(.caption.bold())
+                    .foregroundColor(.yellow)
+            }
+            HStack(spacing: 3) {
+                Image(systemName: "star.fill")
+                    .foregroundColor(.orange)
+                    .font(.caption)
+                Text("\(price.xp)")
+                    .font(.caption.bold())
+                    .foregroundColor(.orange)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(Color(uiColor: .tertiarySystemGroupedBackground))
+        .clipShape(Capsule())
+    }
+}
 
 struct AvatarShopCard: View {
     let avatar: AvatarItem
+    let price: GamificationManager.HybridPrice
     let isOwned: Bool
     let isSelected: Bool
     let isLocked: Bool
     let canAfford: Bool
     let onSelect: () -> Void
     let onPurchase: () -> Void
-    
+
     var body: some View {
-        VStack(spacing: 12) {
-            // Avatar Image
+        VStack(spacing: 10) {
             ZStack {
                 Circle()
                     .fill(
@@ -267,38 +647,34 @@ struct AvatarShopCard: View {
                         LinearGradient(colors: [.blue, .purple], startPoint: .topLeading, endPoint: .bottomTrailing) :
                         LinearGradient(colors: [Color.gray.opacity(0.2), Color.gray.opacity(0.3)], startPoint: .topLeading, endPoint: .bottomTrailing)
                     )
-                    .frame(width: 78, height: 78)
-                
+                    .frame(width: 72, height: 72)
+
                 if isLocked && !isOwned {
                     Image(systemName: "lock.fill")
-                        .font(.title2)
+                        .font(.title3)
                         .foregroundColor(.gray)
                 } else {
                     Image(avatar.imageName)
                         .resizable()
                         .scaledToFit()
-                        .frame(width: 50, height: 50)
-                        .opacity(isOwned || !isLocked ? 1 : 0.5)
+                        .frame(width: 46, height: 46)
                 }
-                
+
                 if isSelected {
                     Circle()
                         .stroke(Color.green, lineWidth: 3)
-                        .frame(width: 84, height: 84)
+                        .frame(width: 78, height: 78)
                 }
             }
-            
-            // Name
+
             Text(avatar.name)
                 .font(.caption.bold())
-                .foregroundColor(isLocked && !isOwned ? .secondary : .primary)
                 .lineLimit(1)
-            
-            // Status / Price
+
             if isOwned {
                 if isSelected {
                     Text("Equipped")
-                        .font(.caption2)
+                        .font(.caption2.bold())
                         .foregroundColor(.green)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
@@ -321,203 +697,140 @@ struct AvatarShopCard: View {
                 Text("Lvl \(avatar.requiredLevel)")
                     .font(.caption2)
                     .foregroundColor(.secondary)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Color.gray.opacity(0.2))
-                    .cornerRadius(8)
             } else {
                 Button(action: {
                     HapticsManager.shared.playTap()
                     onPurchase()
                 }) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "dollarsign.circle.fill")
-                            .font(.caption2)
-                        Text("\(avatar.cost)")
-                            .font(.caption2.bold())
-                    }
-                    .foregroundColor(canAfford ? .yellow : .gray)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(canAfford ? Color.yellow.opacity(0.2) : Color.gray.opacity(0.2))
-                    .cornerRadius(8)
+                    PriceTagView(price: price)
                 }
                 .disabled(!canAfford)
                 .buttonStyle(PressScaleButtonStyle())
+                .opacity(canAfford ? 1 : 0.6)
             }
         }
-        .padding(.vertical, 14)
-        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
+        .padding(.horizontal, 8)
         .background(Color(uiColor: .secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 16)
                 .stroke(isSelected ? Color.green : Color.clear, lineWidth: 2)
         )
-        .shadow(color: .black.opacity(0.06), radius: 5, y: 2)
+        .shadow(color: .black.opacity(0.06), radius: 4, y: 2)
         .scaleEffect(isSelected ? 1.02 : 1)
     }
 }
 
-// MARK: - Theme Shop Card
-
 struct ThemeShopCard: View {
     let theme: ThemeItem
+    let price: GamificationManager.HybridPrice
     let isOwned: Bool
     let isSelected: Bool
     let isLocked: Bool
     let canAfford: Bool
     let onSelect: () -> Void
     let onPurchase: () -> Void
-    
+
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 10) {
             themePreview
-            themeNameLabel
-            themeDescriptionLabel
-            statusOrPriceView
+            Text(theme.name)
+                .font(.subheadline.bold())
+
+            Text(theme.description)
+                .font(.caption2)
+                .foregroundColor(.secondary)
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+
+            if isOwned {
+                if isSelected {
+                    Text("Active")
+                        .font(.caption.bold())
+                        .foregroundColor(.green)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.green.opacity(0.2))
+                        .cornerRadius(8)
+                } else {
+                    Button("Apply") {
+                        HapticsManager.shared.playTap()
+                        onSelect()
+                    }
+                    .font(.caption.bold())
+                    .foregroundColor(.blue)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Color.blue.opacity(0.2))
+                    .cornerRadius(8)
+                    .buttonStyle(PressScaleButtonStyle())
+                }
+            } else if isLocked {
+                Text("Requires Level \(theme.requiredLevel)")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            } else {
+                Button(action: {
+                    HapticsManager.shared.playTap()
+                    onPurchase()
+                }) {
+                    PriceTagView(price: price)
+                }
+                .disabled(!canAfford)
+                .buttonStyle(PressScaleButtonStyle())
+                .opacity(canAfford ? 1 : 0.6)
+            }
         }
         .padding()
+        .frame(maxWidth: .infinity)
         .background(Color(uiColor: .secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 16)
                 .stroke(isSelected ? Color.green : Color.clear, lineWidth: 2)
         )
-        .shadow(color: .black.opacity(0.06), radius: 5, y: 2)
+        .shadow(color: .black.opacity(0.06), radius: 4, y: 2)
     }
-    
-    // MARK: - Subviews
-    
+
     @ViewBuilder
     private var themePreview: some View {
         Group {
             if theme.id == "rainbow" {
-                rainbowPreview
+                HStack(spacing: 4) {
+                    ForEach([Color.red, Color.orange, Color.yellow, Color.green, Color.blue, Color.purple], id: \.self) { color in
+                        Circle()
+                            .fill(color)
+                            .frame(width: 12, height: 12)
+                    }
+                }
             } else {
-                standardPreview
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(colorFromString(theme.primaryColor))
+                        .frame(width: 34, height: 34)
+                    Circle()
+                        .fill(colorFromString(theme.secondaryColor))
+                        .frame(width: 34, height: 34)
+                }
             }
         }
-        .padding()
+        .padding(12)
         .background(
-            RoundedRectangle(cornerRadius: 12)
+            RoundedRectangle(cornerRadius: 10)
                 .fill(Color.gray.opacity(0.1))
         )
         .opacity(isLocked && !isOwned ? 0.5 : 1)
         .overlay {
             if isLocked && !isOwned {
                 Image(systemName: "lock.fill")
-                    .font(.title2)
+                    .font(.title3)
                     .foregroundColor(.gray)
             }
         }
     }
-    
-    private var rainbowPreview: some View {
-        HStack(spacing: 4) {
-            ForEach([Color.red, Color.orange, Color.yellow, Color.green, Color.blue, Color.purple], id: \.self) { color in
-                Circle()
-                    .fill(color)
-                    .frame(width: 14, height: 14)
-            }
-        }
-    }
-    
-    private var standardPreview: some View {
-        HStack(spacing: 8) {
-            Circle()
-                .fill(colorFromString(theme.primaryColor))
-                .frame(width: 40, height: 40)
-            
-            Circle()
-                .fill(colorFromString(theme.secondaryColor))
-                .frame(width: 40, height: 40)
-        }
-    }
-    
-    private var themeNameLabel: some View {
-        Text(theme.name)
-            .font(.subheadline.bold())
-            .foregroundColor(isLocked && !isOwned ? .secondary : .primary)
-    }
-    
-    private var themeDescriptionLabel: some View {
-        Text(theme.description)
-            .font(.caption2)
-            .foregroundColor(.secondary)
-            .multilineTextAlignment(.center)
-            .lineLimit(2)
-    }
-    
-    @ViewBuilder
-    private var statusOrPriceView: some View {
-        if isOwned {
-            ownedStatusView
-        } else if isLocked {
-            lockedStatusView
-        } else {
-            purchaseButton
-        }
-    }
-    
-    @ViewBuilder
-    private var ownedStatusView: some View {
-        if isSelected {
-            Text("Active")
-                .font(.caption.bold())
-                .foregroundColor(.green)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(Color.green.opacity(0.2))
-                .cornerRadius(8)
-        } else {
-            Button("Apply") {
-                HapticsManager.shared.playTap()
-                onSelect()
-            }
-            .font(.caption.bold())
-            .foregroundColor(.blue)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(Color.blue.opacity(0.2))
-            .cornerRadius(8)
-            .buttonStyle(PressScaleButtonStyle())
-        }
-    }
-    
-    private var lockedStatusView: some View {
-        Text("Requires Level \(theme.requiredLevel)")
-            .font(.caption2)
-            .foregroundColor(.secondary)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(Color.gray.opacity(0.2))
-            .cornerRadius(8)
-    }
-    
-    private var purchaseButton: some View {
-        Button(action: {
-            HapticsManager.shared.playTap()
-            onPurchase()
-        }) {
-            HStack(spacing: 4) {
-                Image(systemName: "dollarsign.circle.fill")
-                    .font(.caption)
-                Text("\(theme.cost)")
-                    .font(.caption.bold())
-            }
-            .foregroundColor(canAfford ? .yellow : .gray)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(canAfford ? Color.yellow.opacity(0.2) : Color.gray.opacity(0.2))
-            .cornerRadius(8)
-        }
-        .disabled(!canAfford)
-        .buttonStyle(PressScaleButtonStyle())
-    }
-    
-    // MARK: - Helpers
-    
+
     private func colorFromString(_ colorName: String) -> Color {
         switch colorName {
         case "blue": return .blue
@@ -542,26 +855,17 @@ struct ThemeShopCard: View {
     }
 }
 
-#Preview {
-    NavigationStack {
-        ShopView()
-    }
-    .modelContainer(for: [StudySet.self, UserProfile.self], inMemory: true)
-}
-
-// MARK: - Purchase Confirmation View
-
 struct PurchaseConfirmationView: View {
     let itemName: String
-    let itemCost: Int
+    let itemCoins: Int
+    let itemXP: Int
     let isProcessing: Bool
     let onConfirm: () -> Void
     let onCancel: () -> Void
     @ObservedObject private var themeManager = ThemeManager.shared
-    
+
     var body: some View {
         VStack(spacing: 20) {
-            // Icon/Image
             ZStack {
                 Circle()
                     .fill(themeManager.primaryGradient)
@@ -575,34 +879,33 @@ struct PurchaseConfirmationView: View {
                     .font(.title)
                     .foregroundColor(.white)
             }
-            
+
             VStack(spacing: 8) {
                 Text("Confirm Purchase")
                     .font(.title3.bold())
-                
-                Text("Are you sure you want to buy")
-                    .foregroundColor(.secondary)
-                    .font(.subheadline)
-                
+
                 Text(itemName)
                     .font(.headline)
-                    .foregroundColor(.primary)
-                
-                HStack(spacing: 4) {
-                    Text("for")
-                        .foregroundColor(.secondary)
-                        .font(.subheadline)
-                    
-                    Image(systemName: "dollarsign.circle.fill")
-                        .foregroundColor(.yellow)
-                    
-                    Text("\(itemCost)")
-                        .fontWeight(.bold)
-                        .foregroundColor(.yellow)
+
+                HStack(spacing: 8) {
+                    HStack(spacing: 3) {
+                        Image(systemName: "dollarsign.circle.fill")
+                            .foregroundColor(.yellow)
+                        Text("\(itemCoins)")
+                            .fontWeight(.bold)
+                            .foregroundColor(.yellow)
+                    }
+                    HStack(spacing: 3) {
+                        Image(systemName: "star.fill")
+                            .foregroundColor(.orange)
+                        Text("\(itemXP)")
+                            .fontWeight(.bold)
+                            .foregroundColor(.orange)
+                    }
                 }
                 .padding(.top, 4)
             }
-            
+
             HStack(spacing: 12) {
                 Button(action: {
                     HapticsManager.shared.playTap()
@@ -618,7 +921,7 @@ struct PurchaseConfirmationView: View {
                 }
                 .buttonStyle(PressScaleButtonStyle())
                 .disabled(isProcessing)
-                
+
                 Button(action: {
                     HapticsManager.shared.playTap()
                     onConfirm()
@@ -629,7 +932,7 @@ struct PurchaseConfirmationView: View {
                                 .progressViewStyle(.circular)
                                 .tint(.white)
                         }
-                        Text(isProcessing ? "Processing..." : "Buy Now")
+                        Text(isProcessing ? "Processing..." : "Buy")
                             .fontWeight(.bold)
                     }
                     .foregroundColor(.white)
@@ -653,21 +956,39 @@ struct PurchaseConfirmationView: View {
                 .stroke(themeManager.primaryColor.opacity(0.22), lineWidth: 1)
         )
         .shadow(color: Color.black.opacity(0.16), radius: 18, y: 6)
-        .padding(.horizontal, 40)
+        .padding(.horizontal, 34)
     }
 }
 
 private struct ShopSkeletonView: View {
     let tab: ShopView.ShopTab
 
+    var columns: [GridItem] {
+        switch tab {
+        case .avatars:
+            return [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())]
+        case .themes:
+            return [GridItem(.flexible()), GridItem(.flexible())]
+        case .consumables:
+            return [GridItem(.flexible())]
+        }
+    }
+
     var body: some View {
-        LazyVGrid(columns: tab == .avatars ? [GridItem(.adaptive(minimum: 150, maximum: 220), spacing: 14)] : [GridItem(.flexible())], spacing: 14) {
+        LazyVGrid(columns: columns, spacing: 12) {
             ForEach(0..<6, id: \.self) { _ in
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .fill(Color(.secondarySystemGroupedBackground))
-                    .frame(height: tab == .avatars ? 190 : 208)
+                    .frame(height: tab == .consumables ? 136 : 184)
             }
         }
         .shimmering()
     }
+}
+
+#Preview {
+    NavigationStack {
+        ShopView()
+    }
+    .modelContainer(for: [StudySet.self, UserProfile.self, ActiveXPBooster.self], inMemory: true)
 }

@@ -486,7 +486,7 @@ struct QuizView: View {
         if score == questions.count && questions.count > 0 {
             xp += XPRewards.perfectQuiz
         }
-        let multiplier = XPRewards.streakMultiplier(for: profile.currentStreak)
+        let multiplier = gamificationManager.totalXPMultiplierPreview(for: profile)
         return Int(Double(xp) * multiplier)
     }
     

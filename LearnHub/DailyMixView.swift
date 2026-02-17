@@ -41,13 +41,16 @@ struct DailyMixView: View {
     @State private var questionsCorrect = 0
     @State private var isAnswerVisible = false
     @State private var selectedAnswer: String?
+    @State private var currentQuestionIsCorrect = false
+    @State private var hasRatedCurrentQuestion = false
     
     // Flashcard state mirrors `FlashcardsView` for consistency.
     @State private var currentFlashcardIndex = 0
     @State private var flashcardsStudied = 0
     @State private var flashcardsMastered = 0
-    @State private var studiedCardIds: Set<UUID> = []
+    @State private var ratedCardIds: Set<UUID> = []
     @State private var masteredCardIds: Set<UUID> = []
+    @State private var mixPlan = DailyMixPlan()
     
     @State private var hasRecordedCompletion = false
     @State private var isPreparingMix = true
@@ -63,6 +66,18 @@ struct DailyMixView: View {
     private var isAlreadyCompleted: Bool {
         gamificationManager.hasDailyMixCompletedToday(profile: profile)
     }
+
+    private var totalCompletedItems: Int {
+        questionsRatedCount + flashcardsStudied
+    }
+
+    private var totalPlannedItems: Int {
+        mixQuestions.count + mixFlashcards.count
+    }
+
+    private var questionsRatedCount: Int {
+        currentQuestionIndex + (hasRatedCurrentQuestion ? 1 : 0)
+    }
     
     enum DailyMixPhase {
         case intro
@@ -71,18 +86,49 @@ struct DailyMixView: View {
         case complete
     }
 
-    private enum ReviewRating {
-        case again
-        case good
-        case easy
+    private struct DailyMixPlan {
+        var questionCap: Int = 0
+        var flashcardCap: Int = 0
+        var dueQuestions: Int = 0
+        var overdueQuestions: Int = 0
+        var dueFlashcards: Int = 0
+        var overdueFlashcards: Int = 0
+        var carryoverQuestions: Int = 0
+        var carryoverFlashcards: Int = 0
     }
 
-    private struct ReviewScheduleState {
-        var dueDate: Date
-        var intervalDays: Double
-        var stability: Double
-        var difficulty: Double
-        var repetitions: Int
+    enum ReviewRating: String, CaseIterable {
+        case again = "Again"
+        case hard = "Hard"
+        case good = "Good"
+        case easy = "Easy"
+
+        var fsrs: SpacedReviewRating {
+            switch self {
+            case .again: return .again
+            case .hard: return .hard
+            case .good: return .good
+            case .easy: return .easy
+            }
+        }
+
+        var color: Color {
+            switch self {
+            case .again: return .red
+            case .hard: return .orange
+            case .good: return .blue
+            case .easy: return .green
+            }
+        }
+
+        var icon: String {
+            switch self {
+            case .again: return "arrow.counterclockwise"
+            case .hard: return "tortoise.fill"
+            case .good: return "hand.thumbsup.fill"
+            case .easy: return "bolt.fill"
+            }
+        }
     }
     
     var body: some View {
@@ -94,14 +140,19 @@ struct DailyMixView: View {
                 switch phase {
                 case .intro:
                     introView
+                        .transition(.opacity)
                 case .questions:
                     questionsPhaseView
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
                 case .flashcards:
                     flashcardsPhaseView
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
                 case .complete:
                     completionView
+                        .transition(.opacity)
                 }
             }
+            .animation(.spring(response: 0.35, dampingFraction: 0.82), value: phase)
             .navigationTitle("Daily Mix")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -157,6 +208,14 @@ struct DailyMixView: View {
                     .font(.title2.bold())
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
+
+                Label("Spaced Repetition Session", systemImage: "brain.head.profile")
+                    .font(.caption.bold())
+                    .foregroundColor(themeManager.primaryColor)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(themeManager.primaryColor.opacity(0.12))
+                    .cornerRadius(999)
                 
                 Text(isAlreadyCompleted
                      ? "Amazing work! Come back tomorrow for a fresh mix."
@@ -168,35 +227,43 @@ struct DailyMixView: View {
                     .padding(.horizontal, 24)
             }
             
-            // Preview of the fixed question/flashcard counts.
+            // Preview of today's adaptive plan.
             if !isAlreadyCompleted {
-                HStack(spacing: 30) {
-                    VStack(spacing: 8) {
-                        ZStack {
-                            Circle()
-                                .fill(Color.blue.opacity(0.15))
-                                .frame(width: 60, height: 60)
-                            Image(systemName: "questionmark.circle.fill")
-                                .font(.title)
-                                .foregroundColor(.blue)
+                VStack(spacing: 12) {
+                    HStack(spacing: 24) {
+                        VStack(spacing: 8) {
+                            ZStack {
+                                Circle()
+                                    .fill(Color.blue.opacity(0.15))
+                                    .frame(width: 60, height: 60)
+                                Image(systemName: "questionmark.circle.fill")
+                                    .font(.title)
+                                    .foregroundColor(.blue)
+                            }
+                            Text("\(mixQuestions.count) Questions")
+                                .font(.caption.bold())
+                                .foregroundColor(.primary)
                         }
-                        Text("\(mixQuestions.count) Questions")
-                            .font(.caption.bold())
-                            .foregroundColor(.primary)
+
+                        VStack(spacing: 8) {
+                            ZStack {
+                                Circle()
+                                    .fill(Color.orange.opacity(0.15))
+                                    .frame(width: 60, height: 60)
+                                Image(systemName: "rectangle.stack.fill")
+                                    .font(.title)
+                                    .foregroundColor(.orange)
+                            }
+                            Text("\(mixFlashcards.count) Flashcards")
+                                .font(.caption.bold())
+                                .foregroundColor(.primary)
+                        }
                     }
-                    
-                    VStack(spacing: 8) {
-                        ZStack {
-                            Circle()
-                                .fill(Color.orange.opacity(0.15))
-                                .frame(width: 60, height: 60)
-                            Image(systemName: "rectangle.stack.fill")
-                                .font(.title)
-                                .foregroundColor(.orange)
-                        }
-                        Text("\(mixFlashcards.count) Flashcards")
-                            .font(.caption.bold())
-                            .foregroundColor(.primary)
+
+                    HStack(spacing: 12) {
+                        mixMiniStat(label: "Overdue", value: mixPlan.overdueQuestions + mixPlan.overdueFlashcards, color: .red)
+                        mixMiniStat(label: "Due", value: mixPlan.dueQuestions + mixPlan.dueFlashcards, color: .blue)
+                        mixMiniStat(label: "Carryover", value: mixPlan.carryoverQuestions + mixPlan.carryoverFlashcards, color: .orange)
                     }
                 }
                 .padding()
@@ -205,30 +272,16 @@ struct DailyMixView: View {
             
             // Preview of possible XP/coin rewards.
             if !isAlreadyCompleted {
-                VStack(spacing: 12) {
-                    Text("Potential Rewards")
-                        .font(.caption.bold())
-                        .foregroundColor(.secondary)
-                    
-                    HStack(spacing: 20) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "star.fill")
-                                .foregroundColor(.blue)
-                            Text("Up to \(calculateMaxXP()) XP")
-                                .font(.subheadline.bold())
-                                .foregroundColor(.blue)
-                        }
-                        
-                        HStack(spacing: 4) {
-                            Image(systemName: "dollarsign.circle.fill")
-                                .foregroundColor(.orange)
-                            Text("Up to \(calculateMaxCoins()) Coins")
-                                .font(.subheadline.bold())
-                                .foregroundColor(.primary)
-                        }
-                    }
+                HStack(spacing: 16) {
+                    Label("Up to \(calculateMaxXP()) XP", systemImage: "star.fill")
+                        .font(.subheadline.bold())
+                        .foregroundColor(.blue)
+                    Label("Up to \(calculateMaxCoins()) Coins", systemImage: "dollarsign.circle.fill")
+                        .font(.subheadline.bold())
+                        .foregroundColor(.orange)
                 }
-                .padding()
+                .padding(.vertical, 10)
+                .padding(.horizontal, 12)
                 .glassCard(cornerRadius: 12, strokeOpacity: 0.22)
             }
             
@@ -330,10 +383,24 @@ struct DailyMixView: View {
                             Text("\(questionsCorrect) correct")
                                 .font(.subheadline.bold())
                         }
+                        Text("\(totalCompletedItems)/\(totalPlannedItems)")
+                            .font(.caption.bold())
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.secondary.opacity(0.12))
+                            .cornerRadius(8)
                     }
                     .padding(.horizontal)
+
+                    Label("Spaced Repetition", systemImage: "brain")
+                        .font(.caption.bold())
+                        .foregroundColor(themeManager.primaryColor)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(themeManager.primaryColor.opacity(0.12))
+                        .cornerRadius(999)
                     
-                    ProgressView(value: Double(currentQuestionIndex), total: Double(mixQuestions.count))
+                    ProgressView(value: Double(questionsRatedCount), total: Double(max(1, mixQuestions.count)))
                         .tint(themeManager.primaryColor)
                         .padding(.horizontal)
                     
@@ -363,6 +430,7 @@ struct DailyMixView: View {
                                 VStack(spacing: 16) {
                                     ForEach(Array(options.enumerated()), id: \.element) { index, option in
                                         Button(action: {
+                                            guard !isAnswerVisible else { return }
                                             HapticsManager.shared.playTap()
                                             checkAnswer(option, correctAnswer: question.answer)
                                         }) {
@@ -409,6 +477,9 @@ struct DailyMixView: View {
                                             )
                                         }
                                         .disabled(isAnswerVisible)
+                                        .opacity(isAnswerVisible ? 0.9 : 1)
+                                        .scaleEffect(selectedAnswer == option ? 0.98 : 1.0)
+                                        .animation(.spring(response: 0.3, dampingFraction: 0.6), value: selectedAnswer)
                                     }
                                 }
                                 .padding(.horizontal)
@@ -437,7 +508,7 @@ struct DailyMixView: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .glassCard(cornerRadius: 12, strokeOpacity: 0.22)
                                 .padding(.horizontal)
-                                .transition(.move(edge: .bottom).combined(with: .opacity))
+                                .transition(.opacity)
                             }
                         }
                         .padding(.bottom, 100)
@@ -447,9 +518,35 @@ struct DailyMixView: View {
                     }
                 }
                 
-                // Fixed footer for next/continue actions.
+                // Fixed footer for rating + next actions.
                 if isAnswerVisible {
                     VStack {
+                        Text(currentQuestionIsCorrect ? "How easy was this recall?" : "Rate your recall after seeing the answer")
+                            .font(.caption.bold())
+                            .foregroundColor(.secondary)
+
+                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                            ForEach(ReviewRating.allCases, id: \.self) { rating in
+                                Button(action: {
+                                    HapticsManager.shared.playTap()
+                                    rateCurrentQuestion(rating)
+                                }) {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: rating.icon)
+                                        Text(rating.rawValue)
+                                    }
+                                    .font(.caption.bold())
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 8)
+                                    .frame(maxWidth: .infinity)
+                                    .background(rating.color)
+                                    .cornerRadius(10)
+                                }
+                                .buttonStyle(PressScaleButtonStyle())
+                            }
+                        }
+
                         Button(action: {
                             HapticsManager.shared.playTap()
                             nextQuestion()
@@ -459,10 +556,12 @@ struct DailyMixView: View {
                                 .foregroundColor(.white)
                                 .frame(maxWidth: .infinity)
                                 .padding()
-                                .background(themeManager.primaryColor)
+                                .background(hasRatedCurrentQuestion ? themeManager.primaryColor : .gray)
                                 .cornerRadius(16)
                         }
+                            .disabled(!hasRatedCurrentQuestion)
                             .buttonStyle(PressScaleButtonStyle())
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
                     .padding()
                     .background(Color(uiColor: .systemGroupedBackground))
@@ -477,7 +576,7 @@ struct DailyMixView: View {
         VStack(spacing: 0) {
             if currentFlashcardIndex < mixFlashcards.count {
                 // Progress stats for studied/mastered cards.
-                HStack(spacing: 16) {
+                HStack(spacing: 14) {
                     HStack(spacing: 6) {
                         Image(systemName: "eye.fill")
                             .font(.caption)
@@ -505,19 +604,34 @@ struct DailyMixView: View {
                     .padding(.vertical, 8)
                     .background(Color.green.opacity(0.1))
                     .cornerRadius(12)
+
+                    Text("\(totalCompletedItems)/\(totalPlannedItems)")
+                        .font(.caption.bold())
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 6)
+                        .background(Color.secondary.opacity(0.12))
+                        .cornerRadius(8)
                 }
                 .padding(.horizontal)
                 .padding(.top, 8)
+
+                if mixPlan.carryoverQuestions + mixPlan.carryoverFlashcards > 0 {
+                    Text("Carryover after today: \(mixPlan.carryoverQuestions + mixPlan.carryoverFlashcards)")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .padding(.top, 4)
+                }
                 
                 // Swipeable flashcard deck.
                 TabView(selection: $currentFlashcardIndex) {
                     ForEach(mixFlashcards.indices, id: \.self) { index in
                         DailyMixFlashcardView(
                             card: mixFlashcards[index],
-                            isStudied: studiedCardIds.contains(mixFlashcards[index].id),
+                            isStudied: ratedCardIds.contains(mixFlashcards[index].id),
                             isMastered: masteredCardIds.contains(mixFlashcards[index].id),
-                            onStudied: { markStudied(mixFlashcards[index].id) },
-                            onMastered: { markMastered(mixFlashcards[index].id) },
+                            onRate: { rating in
+                                rateFlashcard(mixFlashcards[index].id, rating: rating)
+                            },
                             themeColor: themeManager.primaryColor
                         )
                         .tag(index)
@@ -539,7 +653,7 @@ struct DailyMixView: View {
                     
                     Spacer()
                     
-                    if flashcardsStudied > 0 {
+                    if flashcardsStudied == mixFlashcards.count && !mixFlashcards.isEmpty {
                         Button(action: {
                             HapticsManager.shared.playTap()
                             finishDailyMix()
@@ -681,6 +795,10 @@ struct DailyMixView: View {
                     .font(.subheadline)
                     .foregroundColor(.secondary)
             }
+
+            Text("Backlog remaining: \(mixPlan.carryoverQuestions) questions, \(mixPlan.carryoverFlashcards) flashcards")
+                .font(.caption)
+                .foregroundColor(.secondary)
             
             Spacer()
             
@@ -714,100 +832,115 @@ struct DailyMixView: View {
             allFlashcards.append(contentsOf: set.flashcards)
         }
 
-        let calendar = Calendar.current
-        let today = calendar.startOfDay(for: Date())
-        let seed = UInt64(today.timeIntervalSince1970)
+        let now = Date()
+        let dayStart = Calendar.current.startOfDay(for: now)
+        let seed = UInt64(dayStart.timeIntervalSince1970)
         var generator = SeededRandomNumberGenerator(seed: seed)
-
         let wrongQuestionIDs = gamificationManager.fetchIncorrectQuestionIDs()
-        let questionTarget = min(5, allQuestions.count)
-        let dueQuestions = allQuestions
-            .filter { $0.isDueForReview || wrongQuestionIDs.contains($0.id) }
-            .sorted { lhs, rhs in
-                let lhsDue = lhs.reviewDueDate ?? .distantPast
-                let rhsDue = rhs.reviewDueDate ?? .distantPast
-                if lhsDue != rhsDue { return lhsDue < rhsDue }
-                return lhs.id.uuidString < rhs.id.uuidString
-            }
-        let newQuestions = allQuestions
-            .filter { $0.isNewForReview && !wrongQuestionIDs.contains($0.id) }
-            .sorted { $0.id.uuidString < $1.id.uuidString }
-            .shuffled(using: &generator)
-        let fallbackQuestions = allQuestions
-            .filter { !$0.isDueForReview && !$0.isNewForReview && !wrongQuestionIDs.contains($0.id) }
-            .sorted { lhs, rhs in
-                let lhsDue = lhs.reviewDueDate ?? .distantFuture
-                let rhsDue = rhs.reviewDueDate ?? .distantFuture
-                if lhsDue != rhsDue { return lhsDue < rhsDue }
-                return lhs.id.uuidString < rhs.id.uuidString
-            }
-        mixQuestions = selectDailyItems(
-            dueItems: dueQuestions,
-            newItems: newQuestions,
-            fallbackItems: fallbackQuestions,
-            target: questionTarget,
-            maxNewItems: 2,
-            generator: &generator
+
+        let dueQuestions = allQuestions.filter { $0.isDueForReview || wrongQuestionIDs.contains($0.id) }
+        let dueFlashcards = allFlashcards.filter { $0.isDueForReview }
+        let overdueQuestions = dueQuestions.filter { isOverdue($0.reviewDueDate, now: now) }
+        let overdueFlashcards = dueFlashcards.filter { isOverdue($0.reviewDueDate, now: now) }
+
+        let adaptiveTotalCap = computeAdaptiveTotalCap(
+            totalItems: allQuestions.count + allFlashcards.count,
+            overdueCount: overdueQuestions.count + overdueFlashcards.count
+        )
+        let (questionCap, flashcardCap) = splitCaps(
+            totalCap: adaptiveTotalCap,
+            questionAvailable: allQuestions.count,
+            flashcardAvailable: allFlashcards.count,
+            dueQuestions: dueQuestions.count,
+            dueFlashcards: dueFlashcards.count
         )
 
-        let flashcardTarget = min(5, allFlashcards.count)
-        let dueFlashcards = allFlashcards
-            .filter { $0.isDueForReview }
-            .sorted { lhs, rhs in
-                let lhsDue = lhs.reviewDueDate ?? .distantPast
-                let rhsDue = rhs.reviewDueDate ?? .distantPast
-                if lhsDue != rhsDue { return lhsDue < rhsDue }
-                return lhs.id.uuidString < rhs.id.uuidString
-            }
-        let newFlashcards = allFlashcards
-            .filter { $0.isNewForReview }
-            .sorted { $0.id.uuidString < $1.id.uuidString }
-            .shuffled(using: &generator)
-        let fallbackFlashcards = allFlashcards
-            .filter { !$0.isDueForReview && !$0.isNewForReview }
-            .sorted { lhs, rhs in
-                let lhsDue = lhs.reviewDueDate ?? .distantFuture
-                let rhsDue = rhs.reviewDueDate ?? .distantFuture
-                if lhsDue != rhsDue { return lhsDue < rhsDue }
-                return lhs.id.uuidString < rhs.id.uuidString
-            }
-        mixFlashcards = selectDailyItems(
-            dueItems: dueFlashcards,
-            newItems: newFlashcards,
-            fallbackItems: fallbackFlashcards,
-            target: flashcardTarget,
-            maxNewItems: 2,
-            generator: &generator
+        let totalNewCap: Int
+        if (overdueQuestions.count + overdueFlashcards.count) > Int(Double(max(1, adaptiveTotalCap)) * 0.8) {
+            totalNewCap = 0
+        } else {
+            totalNewCap = min(4, Int(Double(adaptiveTotalCap) * 0.2))
+        }
+        let (questionNewCap, flashcardNewCap) = splitCaps(
+            totalCap: totalNewCap,
+            questionAvailable: allQuestions.filter(\.isNewForReview).count,
+            flashcardAvailable: allFlashcards.filter(\.isNewForReview).count,
+            dueQuestions: dueQuestions.count,
+            dueFlashcards: dueFlashcards.count,
+            enforceMinimums: false
         )
 
-        // Ensure stale wrong-question entries are cleaned once a question is no longer due and not in today's mix.
+        let questionSelection = selectQuestions(
+            allQuestions: allQuestions,
+            wrongQuestionIDs: wrongQuestionIDs,
+            target: questionCap,
+            maxNewItems: questionNewCap,
+            now: now,
+            generator: &generator
+        )
+        mixQuestions = questionSelection.items
+
+        let flashcardSelection = selectFlashcards(
+            allFlashcards: allFlashcards,
+            target: flashcardCap,
+            maxNewItems: flashcardNewCap,
+            now: now,
+            generator: &generator
+        )
+        mixFlashcards = flashcardSelection.items
+
+        mixPlan = DailyMixPlan(
+            questionCap: questionCap,
+            flashcardCap: flashcardCap,
+            dueQuestions: dueQuestions.count,
+            overdueQuestions: overdueQuestions.count,
+            dueFlashcards: dueFlashcards.count,
+            overdueFlashcards: overdueFlashcards.count,
+            carryoverQuestions: questionSelection.carryover,
+            carryoverFlashcards: flashcardSelection.carryover
+        )
+
         let selectedQuestionIDs = Set(mixQuestions.map(\.id))
         for question in allQuestions where !selectedQuestionIDs.contains(question.id) && !question.isDueForReview {
             gamificationManager.recordQuestionResult(questionID: question.id, wasCorrect: true)
         }
+
+        resetSessionProgress()
     }
     
     private func checkAnswer(_ option: String, correctAnswer: String) {
         selectedAnswer = option
         isAnswerVisible = true
+        hasRatedCurrentQuestion = false
         let isCorrect = option == correctAnswer
+        currentQuestionIsCorrect = isCorrect
         let question = mixQuestions[currentQuestionIndex]
         gamificationManager.recordQuestionResult(
             questionID: question.id,
             wasCorrect: isCorrect
         )
-        applyReview(to: question, rating: isCorrect ? .good : .again)
-        try? modelContext.save()
         if isCorrect {
             questionsCorrect += 1
         }
     }
+
+    private func rateCurrentQuestion(_ rating: ReviewRating) {
+        guard !hasRatedCurrentQuestion else { return }
+        guard currentQuestionIndex < mixQuestions.count else { return }
+        let question = mixQuestions[currentQuestionIndex]
+        applyReview(to: question, rating: rating)
+        hasRatedCurrentQuestion = true
+        try? modelContext.save()
+    }
     
     private func nextQuestion() {
+        guard hasRatedCurrentQuestion else { return }
         if currentQuestionIndex < mixQuestions.count - 1 {
             currentQuestionIndex += 1
             isAnswerVisible = false
             selectedAnswer = nil
+            hasRatedCurrentQuestion = false
+            currentQuestionIsCorrect = false
         } else {
             // Transition to the flashcards phase after the last question.
             withAnimation {
@@ -816,148 +949,275 @@ struct DailyMixView: View {
         }
     }
     
-    private func markStudied(_ cardId: UUID) {
-        guard !studiedCardIds.contains(cardId) else { return }
-        studiedCardIds.insert(cardId)
-        flashcardsStudied += 1
-        if let idx = mixFlashcards.firstIndex(where: { $0.id == cardId }) {
-            applyReview(to: mixFlashcards[idx], rating: .good)
-            try? modelContext.save()
-        }
-    }
-    
-    private func markMastered(_ cardId: UUID) {
-        guard !masteredCardIds.contains(cardId) else { return }
-        masteredCardIds.insert(cardId)
-        flashcardsMastered += 1
-        if let idx = mixFlashcards.firstIndex(where: { $0.id == cardId }) {
+    private func rateFlashcard(_ cardId: UUID, rating: ReviewRating) {
+        guard !ratedCardIds.contains(cardId) else { return }
+        guard let idx = mixFlashcards.firstIndex(where: { $0.id == cardId }) else { return }
+
+        ratedCardIds.insert(cardId)
+        flashcardsStudied = ratedCardIds.count
+
+        if rating == .easy {
+            masteredCardIds.insert(cardId)
             mixFlashcards[idx].isMastered = true
-            applyReview(to: mixFlashcards[idx], rating: .easy)
         }
-        if !studiedCardIds.contains(cardId) {
-            studiedCardIds.insert(cardId)
-            flashcardsStudied += 1
-        }
+        flashcardsMastered = masteredCardIds.count
+
+        applyReview(to: mixFlashcards[idx], rating: rating)
         try? modelContext.save()
         gamificationManager.syncStudySets(studySets)
+
+        if currentFlashcardIndex < mixFlashcards.count - 1 {
+            withAnimation {
+                currentFlashcardIndex += 1
+            }
+        }
     }
 
-    private func selectDailyItems<T>(
-        dueItems: [T],
-        newItems: [T],
-        fallbackItems: [T],
+    private func selectQuestions(
+        allQuestions: [Question],
+        wrongQuestionIDs: Set<UUID>,
         target: Int,
         maxNewItems: Int,
+        now: Date,
         generator: inout SeededRandomNumberGenerator
-    ) -> [T] {
-        guard target > 0 else { return [] }
+    ) -> (items: [Question], carryover: Int) {
+        guard target > 0 else { return ([], 0) }
 
-        var selected = Array(dueItems.prefix(target))
-        let remaining = target - selected.count
-        guard remaining > 0 else { return selected }
+        let dueOrPriority = allQuestions
+            .filter { $0.isDueForReview || wrongQuestionIDs.contains($0.id) }
+            .sorted { lhs, rhs in
+                let lhsScore = questionUrgency(lhs, wrongQuestionIDs: wrongQuestionIDs, now: now)
+                let rhsScore = questionUrgency(rhs, wrongQuestionIDs: wrongQuestionIDs, now: now)
+                if lhsScore != rhsScore { return lhsScore > rhsScore }
+                return lhs.id.uuidString < rhs.id.uuidString
+            }
 
-        var shuffledNewItems = newItems
-        shuffledNewItems.shuffle(using: &generator)
-        let newCount = min(remaining, maxNewItems)
-        selected.append(contentsOf: shuffledNewItems.prefix(newCount))
+        var selected = Array(dueOrPriority.prefix(target))
+        let selectedIDs = Set(selected.map(\.id))
 
-        let fallbackRemaining = target - selected.count
-        if fallbackRemaining > 0 {
-            selected.append(contentsOf: fallbackItems.prefix(fallbackRemaining))
+        var newItems = allQuestions
+            .filter { $0.isNewForReview && !selectedIDs.contains($0.id) && !wrongQuestionIDs.contains($0.id) }
+        newItems.shuffle(using: &generator)
+
+        let newCount = min(maxNewItems, max(0, target - selected.count))
+        selected.append(contentsOf: newItems.prefix(newCount))
+
+        if selected.count < target {
+            let selectedNow = Set(selected.map(\.id))
+            let fallback = allQuestions
+                .filter { !selectedNow.contains($0.id) }
+                .sorted { lhs, rhs in
+                    let lhsDue = lhs.reviewDueDate ?? .distantFuture
+                    let rhsDue = rhs.reviewDueDate ?? .distantFuture
+                    if lhsDue != rhsDue { return lhsDue < rhsDue }
+                    return lhs.id.uuidString < rhs.id.uuidString
+                }
+            selected.append(contentsOf: fallback.prefix(target - selected.count))
         }
 
-        return selected
+        let carryover = max(0, dueOrPriority.count - min(target, dueOrPriority.count))
+        return (selected, carryover)
+    }
+
+    private func selectFlashcards(
+        allFlashcards: [Flashcard],
+        target: Int,
+        maxNewItems: Int,
+        now: Date,
+        generator: inout SeededRandomNumberGenerator
+    ) -> (items: [Flashcard], carryover: Int) {
+        guard target > 0 else { return ([], 0) }
+
+        let dueItems = allFlashcards
+            .filter { $0.isDueForReview }
+            .sorted { lhs, rhs in
+                let lhsScore = flashcardUrgency(lhs, now: now)
+                let rhsScore = flashcardUrgency(rhs, now: now)
+                if lhsScore != rhsScore { return lhsScore > rhsScore }
+                return lhs.id.uuidString < rhs.id.uuidString
+            }
+
+        var selected = Array(dueItems.prefix(target))
+        let selectedIDs = Set(selected.map(\.id))
+
+        var newItems = allFlashcards
+            .filter { $0.isNewForReview && !selectedIDs.contains($0.id) }
+        newItems.shuffle(using: &generator)
+
+        let newCount = min(maxNewItems, max(0, target - selected.count))
+        selected.append(contentsOf: newItems.prefix(newCount))
+
+        if selected.count < target {
+            let selectedNow = Set(selected.map(\.id))
+            let fallback = allFlashcards
+                .filter { !selectedNow.contains($0.id) }
+                .sorted { lhs, rhs in
+                    let lhsDue = lhs.reviewDueDate ?? .distantFuture
+                    let rhsDue = rhs.reviewDueDate ?? .distantFuture
+                    if lhsDue != rhsDue { return lhsDue < rhsDue }
+                    return lhs.id.uuidString < rhs.id.uuidString
+                }
+            selected.append(contentsOf: fallback.prefix(target - selected.count))
+        }
+
+        let carryover = max(0, dueItems.count - min(target, dueItems.count))
+        return (selected, carryover)
     }
 
     private func applyReview(to question: Question, rating: ReviewRating) {
-        let updated = nextReviewState(
-            currentDifficulty: question.reviewDifficulty,
-            currentStability: question.reviewStability,
-            currentRepetitions: question.reviewRepetitions,
-            rating: rating
+        let result = SpacedRepetitionScheduler.schedule(
+            SpacedReviewInput(
+                now: Date(),
+                difficulty: question.reviewDifficulty,
+                stability: question.reviewStability,
+                intervalDays: question.reviewIntervalDays,
+                repetitions: question.reviewRepetitions,
+                lapses: question.reviewLapses,
+                lastReviewedAt: question.reviewLastReviewedAt,
+                rating: rating.fsrs
+            )
         )
-        question.reviewDifficulty = updated.difficulty
-        question.reviewStability = updated.stability
-        question.reviewIntervalDays = updated.intervalDays
-        question.reviewRepetitions = updated.repetitions
-        question.reviewDueDate = updated.dueDate
+
+        question.reviewDifficulty = result.difficulty
+        question.reviewStability = result.stability
+        question.reviewIntervalDays = result.intervalDays
+        question.reviewRepetitions = result.repetitions
+        question.reviewDueDate = result.dueDate
+        question.reviewLapses = result.lapses
+        question.reviewLastReviewedAt = result.lastReviewedAt
     }
 
     private func applyReview(to flashcard: Flashcard, rating: ReviewRating) {
-        let updated = nextReviewState(
-            currentDifficulty: flashcard.reviewDifficulty,
-            currentStability: flashcard.reviewStability,
-            currentRepetitions: flashcard.reviewRepetitions,
-            rating: rating
+        let result = SpacedRepetitionScheduler.schedule(
+            SpacedReviewInput(
+                now: Date(),
+                difficulty: flashcard.reviewDifficulty,
+                stability: flashcard.reviewStability,
+                intervalDays: flashcard.reviewIntervalDays,
+                repetitions: flashcard.reviewRepetitions,
+                lapses: flashcard.reviewLapses,
+                lastReviewedAt: flashcard.reviewLastReviewedAt,
+                rating: rating.fsrs
+            )
         )
-        flashcard.reviewDifficulty = updated.difficulty
-        flashcard.reviewStability = updated.stability
-        flashcard.reviewIntervalDays = updated.intervalDays
-        flashcard.reviewRepetitions = updated.repetitions
-        flashcard.reviewDueDate = updated.dueDate
+
+        flashcard.reviewDifficulty = result.difficulty
+        flashcard.reviewStability = result.stability
+        flashcard.reviewIntervalDays = result.intervalDays
+        flashcard.reviewRepetitions = result.repetitions
+        flashcard.reviewDueDate = result.dueDate
+        flashcard.reviewLapses = result.lapses
+        flashcard.reviewLastReviewedAt = result.lastReviewedAt
     }
 
-    private func nextReviewState(
-        currentDifficulty: Double,
-        currentStability: Double,
-        currentRepetitions: Int,
-        rating: ReviewRating
-    ) -> ReviewScheduleState {
-        let now = Date()
-        var difficulty = min(10, max(1, currentDifficulty > 0 ? currentDifficulty : 5))
-        var stability = max(0, currentStability)
-        var repetitions = max(0, currentRepetitions)
-
-        switch rating {
-        case .again:
-            difficulty = min(10, difficulty + 0.8)
-            stability = max(0.3, stability * 0.55)
-            repetitions = 0
-            let intervalDays = 0.02 // ~30 minutes
-            return ReviewScheduleState(
-                dueDate: now.addingTimeInterval(intervalDays * 86_400),
-                intervalDays: intervalDays,
-                stability: stability,
-                difficulty: difficulty,
-                repetitions: repetitions
-            )
-
-        case .good:
-            difficulty = max(1, difficulty - 0.18)
-            stability = max(1, stability + (11 - difficulty) * 0.45 + Double(repetitions) * 0.2)
-            repetitions += 1
-            let intervalDays: Double
-            if repetitions <= 1 {
-                intervalDays = 1
-            } else {
-                intervalDays = max(1, stability * (1.35 + (10 - difficulty) * 0.06))
-            }
-            return ReviewScheduleState(
-                dueDate: now.addingTimeInterval(intervalDays * 86_400),
-                intervalDays: intervalDays,
-                stability: stability,
-                difficulty: difficulty,
-                repetitions: repetitions
-            )
-
-        case .easy:
-            difficulty = max(1, difficulty - 0.45)
-            stability = max(1.5, stability + (12 - difficulty) * 0.6 + Double(repetitions) * 0.35)
-            repetitions += 1
-            let intervalDays: Double
-            if repetitions <= 1 {
-                intervalDays = 3
-            } else {
-                intervalDays = max(2, stability * (2.0 + (10 - difficulty) * 0.08))
-            }
-            return ReviewScheduleState(
-                dueDate: now.addingTimeInterval(intervalDays * 86_400),
-                intervalDays: intervalDays,
-                stability: stability,
-                difficulty: difficulty,
-                repetitions: repetitions
-            )
+    private func computeAdaptiveTotalCap(totalItems: Int, overdueCount: Int) -> Int {
+        guard totalItems > 0 else { return 0 }
+        let base = 12
+        let backlogPressure = min(24, Int(3 * sqrt(Double(overdueCount))))
+        let streakBonus: Int
+        if profile.currentStreak >= 30 {
+            streakBonus = 4
+        } else if profile.currentStreak >= 7 {
+            streakBonus = 2
+        } else {
+            streakBonus = 0
         }
+        let computed = min(40, max(10, base + backlogPressure + streakBonus))
+        return min(totalItems, computed)
+    }
+
+    private func splitCaps(
+        totalCap: Int,
+        questionAvailable: Int,
+        flashcardAvailable: Int,
+        dueQuestions: Int,
+        dueFlashcards: Int,
+        enforceMinimums: Bool = true
+    ) -> (Int, Int) {
+        guard totalCap > 0 else { return (0, 0) }
+        guard questionAvailable > 0 else { return (0, min(totalCap, flashcardAvailable)) }
+        guard flashcardAvailable > 0 else { return (min(totalCap, questionAvailable), 0) }
+
+        let dueTotal = dueQuestions + dueFlashcards
+        let questionShare: Double
+        if dueTotal > 0 {
+            questionShare = Double(dueQuestions) / Double(dueTotal)
+        } else {
+            questionShare = Double(questionAvailable) / Double(questionAvailable + flashcardAvailable)
+        }
+
+        var questionCap = min(questionAvailable, Int((Double(totalCap) * questionShare).rounded()))
+        var flashcardCap = min(flashcardAvailable, totalCap - questionCap)
+
+        if enforceMinimums && totalCap >= 6 {
+            questionCap = max(min(3, questionAvailable), questionCap)
+            flashcardCap = max(min(3, flashcardAvailable), flashcardCap)
+        }
+
+        if questionCap + flashcardCap > totalCap {
+            if questionCap > flashcardCap {
+                questionCap -= (questionCap + flashcardCap) - totalCap
+            } else {
+                flashcardCap -= (questionCap + flashcardCap) - totalCap
+            }
+        }
+
+        if questionCap + flashcardCap < totalCap {
+            let remaining = totalCap - (questionCap + flashcardCap)
+            let questionRoom = max(0, questionAvailable - questionCap)
+            let questionAdd = min(remaining, questionRoom)
+            questionCap += questionAdd
+            flashcardCap += min(totalCap - (questionCap + flashcardCap), max(0, flashcardAvailable - flashcardCap))
+        }
+
+        return (questionCap, flashcardCap)
+    }
+
+    private func questionUrgency(_ question: Question, wrongQuestionIDs: Set<UUID>, now: Date) -> Double {
+        let overdueDays = overdueDays(until: question.reviewDueDate, now: now)
+        let retrievability = SpacedRepetitionScheduler.predictRetrievability(
+            stability: question.reviewStability,
+            now: now,
+            lastReviewedAt: question.reviewLastReviewedAt
+        )
+        let wrongBoost = wrongQuestionIDs.contains(question.id) ? 100.0 : 0.0
+        return wrongBoost + (8 * overdueDays) + (20 * (1 - retrievability))
+    }
+
+    private func flashcardUrgency(_ flashcard: Flashcard, now: Date) -> Double {
+        let overdueDays = overdueDays(until: flashcard.reviewDueDate, now: now)
+        let retrievability = SpacedRepetitionScheduler.predictRetrievability(
+            stability: flashcard.reviewStability,
+            now: now,
+            lastReviewedAt: flashcard.reviewLastReviewedAt
+        )
+        return (8 * overdueDays) + (20 * (1 - retrievability))
+    }
+
+    private func overdueDays(until dueDate: Date?, now: Date) -> Double {
+        guard let dueDate else { return 0 }
+        return max(0, now.timeIntervalSince(dueDate) / 86_400)
+    }
+
+    private func isOverdue(_ dueDate: Date?, now: Date) -> Bool {
+        guard let dueDate else { return false }
+        return dueDate < Calendar.current.startOfDay(for: now)
+    }
+
+    private func resetSessionProgress() {
+        phase = .intro
+        currentQuestionIndex = 0
+        questionsCorrect = 0
+        isAnswerVisible = false
+        selectedAnswer = nil
+        currentQuestionIsCorrect = false
+        hasRatedCurrentQuestion = false
+        currentFlashcardIndex = 0
+        flashcardsStudied = 0
+        flashcardsMastered = 0
+        ratedCardIds = []
+        masteredCardIds = []
+        hasRecordedCompletion = false
     }
 
     private func sanitizedOptions(from options: [String]) -> [String] {
@@ -995,7 +1255,7 @@ struct DailyMixView: View {
         let base = XPRewards.dailyMixBase
         let questions = mixQuestions.count * XPRewards.dailyMixQuestionCorrect
         let flashcards = mixFlashcards.count * XPRewards.dailyMixFlashcard
-        let multiplier = XPRewards.streakMultiplier(for: profile.currentStreak)
+        let multiplier = gamificationManager.totalXPMultiplierPreview(for: profile)
         return Int(Double(base + questions + flashcards) * multiplier)
     }
     
@@ -1007,7 +1267,7 @@ struct DailyMixView: View {
         let base = XPRewards.dailyMixBase
         let questions = questionsCorrect * XPRewards.dailyMixQuestionCorrect
         let flashcards = flashcardsStudied * XPRewards.dailyMixFlashcard
-        let multiplier = XPRewards.streakMultiplier(for: profile.currentStreak)
+        let multiplier = gamificationManager.totalXPMultiplierPreview(for: profile)
         return Int(Double(base + questions + flashcards) * multiplier)
     }
     
@@ -1026,6 +1286,21 @@ struct DailyMixView: View {
         } else {
             return "Keep learning — every step counts!"
         }
+    }
+
+    private func mixMiniStat(label: String, value: Int, color: Color) -> some View {
+        VStack(spacing: 4) {
+            Text("\(value)")
+                .font(.subheadline.bold())
+                .foregroundColor(color)
+            Text(label)
+                .font(.caption2)
+                .foregroundColor(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 6)
+        .background(color.opacity(0.08))
+        .cornerRadius(8)
     }
     
     // MARK: - Option styling (mirrors QuizView)
@@ -1064,8 +1339,7 @@ private struct DailyMixFlashcardView: View {
     let card: Flashcard
     var isStudied: Bool = false
     var isMastered: Bool = false
-    var onStudied: (() -> Void)?
-    var onMastered: (() -> Void)?
+    var onRate: ((DailyMixView.ReviewRating) -> Void)?
     var themeColor: Color = ThemeManager.shared.primaryColor
     
     @State private var isFlipped = false
@@ -1101,9 +1375,6 @@ private struct DailyMixFlashcardView: View {
                 HapticsManager.shared.playTap()
                 withAnimation(.spring()) {
                     isFlipped.toggle()
-                    if isFlipped && !isStudied {
-                        onStudied?()
-                    }
                 }
             }
             .accessibilityElement(children: .ignore)
@@ -1111,26 +1382,52 @@ private struct DailyMixFlashcardView: View {
             .accessibilityValue(isFlipped ? card.back : card.front)
             .accessibilityHint(isFlipped ? "Swipe or double-tap to go back to the question" : "Double-tap to flip and hear the answer")
             .accessibilityAddTraits(.isButton)
-            
-            // Mastery action becomes available after flipping.
-            if isFlipped && !isMastered {
-                Button(action: {
-                    HapticsManager.shared.playTap()
-                    onMastered?()
-                }) {
-                    Label("I Know This!", systemImage: "checkmark.circle.fill")
-                        .font(.subheadline.bold())
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .background(themeColor)
-                        .cornerRadius(20)
+            .accessibilityAction {
+                HapticsManager.shared.playTap()
+                withAnimation(.spring()) {
+                    isFlipped.toggle()
                 }
-                    .buttonStyle(PressScaleButtonStyle())
+            }
+            
+            if isFlipped && !isStudied {
+                VStack(spacing: 8) {
+                    Text("Rate your recall")
+                        .font(.caption.bold())
+                        .foregroundColor(.secondary)
+
+                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                        ForEach(DailyMixView.ReviewRating.allCases, id: \.self) { rating in
+                            Button(action: {
+                                HapticsManager.shared.playTap()
+                                onRate?(rating)
+                            }) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: rating.icon)
+                                    Text(rating.rawValue)
+                                }
+                                .font(.caption.bold())
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 8)
+                                .frame(maxWidth: .infinity)
+                                .background(rating.color)
+                                .cornerRadius(10)
+                            }
+                            .buttonStyle(PressScaleButtonStyle())
+                        }
+                    }
+                    .transition(.opacity)
+                }
             } else if isFlipped && isMastered {
                 Label("Mastered!", systemImage: "checkmark.seal.fill")
                     .font(.subheadline.bold())
                     .foregroundColor(.green.opacity(0.6))
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+            } else if isFlipped && isStudied {
+                Label("Rated", systemImage: "checkmark.circle")
+                    .font(.subheadline.bold())
+                    .foregroundColor(themeColor.opacity(0.8))
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
             }

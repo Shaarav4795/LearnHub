@@ -271,10 +271,12 @@ final class UserProfile {
     var totalStudySets: Int
     var selectedAvatarId: String
     var selectedThemeId: String
+    var streakFreezeTokens: Int
     var createdAt: Date
     
     @Relationship(deleteRule: .cascade) var achievements: [Achievement] = []
     @Relationship(deleteRule: .cascade) var unlockedItems: [UnlockedItem] = []
+    @Relationship(deleteRule: .cascade) var activeXPBoosters: [ActiveXPBooster] = []
     
     init(username: String = "Student") {
         self.id = UUID()
@@ -292,6 +294,7 @@ final class UserProfile {
         self.totalStudySets = 0
         self.selectedAvatarId = "default_avatar"
         self.selectedThemeId = "default_theme"
+        self.streakFreezeTokens = 0
         self.createdAt = Date()
     }
     
@@ -343,6 +346,23 @@ final class UserProfile {
     
     var xpToNextLevel: Int {
         return max(0, xpForNextLevel - totalXP)
+    }
+}
+
+@Model
+final class ActiveXPBooster {
+    var id: UUID
+    var percentBonus: Int
+    var startsAt: Date
+    var endsAt: Date
+
+    var userProfile: UserProfile?
+
+    init(percentBonus: Int, startsAt: Date, endsAt: Date) {
+        self.id = UUID()
+        self.percentBonus = percentBonus
+        self.startsAt = startsAt
+        self.endsAt = endsAt
     }
 }
 
@@ -450,7 +470,7 @@ struct XPRewards {
     static let perfectQuiz = 75 // Bonus for a perfect quiz.
     static let flashcardStudied = 8
     static let flashcardMastered = 20
-    static let studySetCreated = 45
+    static let studySetCreated = 1000 // was 45
     static let summaryRead = 15
     static let dailyLoginBonus = 30
     static let streakBonus: Int = 8 // Per day of streak.
@@ -478,7 +498,7 @@ struct CoinRewards {
     // Coin rewards track the XP economy changes.
     static let quizCompleted = 8
     static let perfectQuiz = 25
-    static let studySetCreated = 15
+    static let studySetCreated = 1000 //was 15
     static let dailyLogin = 8
     static let streakBonus = 10 // Per day of streak (on milestones).
     
@@ -486,4 +506,57 @@ struct CoinRewards {
     static let dailyMixBase = 10
     static let dailyMixQuestionCorrect = 3
     static let dailyMixFlashcard = 2
+}
+
+enum ShopXPTier: Int, CaseIterable {
+    case novice = 0
+    case learner = 1
+    case scholar = 2
+    case expert = 3
+    case master = 4
+
+    var title: String {
+        switch self {
+        case .novice: return "Novice"
+        case .learner: return "Learner"
+        case .scholar: return "Scholar"
+        case .expert: return "Expert"
+        case .master: return "Master"
+        }
+    }
+
+    var minXP: Int {
+        switch self {
+        case .novice: return 0
+        case .learner: return 600
+        case .scholar: return 1800
+        case .expert: return 5000
+        case .master: return 12000
+        }
+    }
+
+    var maxBoosterPercent: Int {
+        switch self {
+        case .novice: return 50
+        case .learner: return 100
+        case .scholar: return 150
+        case .expert: return 250
+        case .master: return 300
+        }
+    }
+
+    static func forTotalXP(_ xp: Int) -> ShopXPTier {
+        if xp >= ShopXPTier.master.minXP { return .master }
+        if xp >= ShopXPTier.expert.minXP { return .expert }
+        if xp >= ShopXPTier.scholar.minXP { return .scholar }
+        if xp >= ShopXPTier.learner.minXP { return .learner }
+        return .novice
+    }
+}
+
+enum ShopEconomy {
+    static let xpPerCoinRate: Double = 12
+    static let maxXPShare: Double = 0.5
+    static let maxStreakFreezeTokens: Int = 10
+    static let maxEffectiveBoosterMultiplier: Double = 6
 }

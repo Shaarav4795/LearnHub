@@ -142,6 +142,8 @@ final class Flashcard {
     var reviewStability: Double = 0
     var reviewDifficulty: Double = 5
     var reviewRepetitions: Int = 0
+    var reviewLastReviewedAt: Date?
+    var reviewLapses: Int = 0
     
     var studySet: StudySet?
     
@@ -153,7 +155,9 @@ final class Flashcard {
         reviewIntervalDays: Double = 0,
         reviewStability: Double = 0,
         reviewDifficulty: Double = 5,
-        reviewRepetitions: Int = 0
+        reviewRepetitions: Int = 0,
+        reviewLastReviewedAt: Date? = nil,
+        reviewLapses: Int = 0
     ) {
         self.id = UUID()
         self.front = front
@@ -164,6 +168,8 @@ final class Flashcard {
         self.reviewStability = reviewStability
         self.reviewDifficulty = reviewDifficulty
         self.reviewRepetitions = reviewRepetitions
+        self.reviewLastReviewedAt = reviewLastReviewedAt
+        self.reviewLapses = reviewLapses
     }
 
     var isNewForReview: Bool {
@@ -188,6 +194,8 @@ final class Question {
     var reviewStability: Double = 0
     var reviewDifficulty: Double = 5
     var reviewRepetitions: Int = 0
+    var reviewLastReviewedAt: Date?
+    var reviewLapses: Int = 0
     
     var studySet: StudySet?
     
@@ -200,7 +208,9 @@ final class Question {
         reviewIntervalDays: Double = 0,
         reviewStability: Double = 0,
         reviewDifficulty: Double = 5,
-        reviewRepetitions: Int = 0
+        reviewRepetitions: Int = 0,
+        reviewLastReviewedAt: Date? = nil,
+        reviewLapses: Int = 0
     ) {
         self.id = UUID()
         self.prompt = prompt
@@ -212,6 +222,8 @@ final class Question {
         self.reviewStability = reviewStability
         self.reviewDifficulty = reviewDifficulty
         self.reviewRepetitions = reviewRepetitions
+        self.reviewLastReviewedAt = reviewLastReviewedAt
+        self.reviewLapses = reviewLapses
     }
 
     var isNewForReview: Bool {
