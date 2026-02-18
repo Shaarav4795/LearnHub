@@ -4,6 +4,8 @@ struct ModelSettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage(ModelSettings.Keys.preference) private var preferenceRaw: String = AIModelPreference.automatic.rawValue
     @AppStorage(ModelSettings.Keys.groqApiKey) private var groqApiKey: String = ""
+    @AppStorage(ModelSettings.Keys.smartRemindersEnabled) private var smartRemindersEnabled: Bool = true
+    @AppStorage(ModelSettings.Keys.smartReminderSensitivity) private var reminderSensitivityRaw: String = ReminderSensitivity.medium.rawValue
     @State private var showHelp = false
 
     private var preferenceBinding: Binding<AIModelPreference> {
@@ -16,6 +18,14 @@ struct ModelSettingsView: View {
 
     private var appleAvailable: Bool {
         ModelSettings.appleIntelligenceAvailable
+    }
+
+    private var sensitivityBinding: Binding<ReminderSensitivity> {
+        Binding {
+            ReminderSensitivity(rawValue: reminderSensitivityRaw) ?? .medium
+        } set: { newValue in
+            reminderSensitivityRaw = newValue.rawValue
+        }
     }
 
     var body: some View {
@@ -93,6 +103,29 @@ struct ModelSettingsView: View {
                     Text("Your Groq API key is required to use Groq models.").font(.footnote).foregroundColor(.secondary)
                 } else {
                     Text("API Key saved. You can now use Groq models.").font(.footnote).foregroundColor(.green)
+                }
+            }
+
+            Section("Smart Predictive Reminders") {
+                Toggle("Enable Smart Reminders", isOn: $smartRemindersEnabled)
+                    .onChange(of: smartRemindersEnabled) { _, _ in
+                        HapticsManager.shared.playTap()
+                    }
+
+                if smartRemindersEnabled {
+                    Picker("Sensitivity", selection: sensitivityBinding) {
+                        ForEach(ReminderSensitivity.allCases) { option in
+                            Text(option.displayName).tag(option)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .onChange(of: sensitivityBinding.wrappedValue) { _, _ in
+                        HapticsManager.shared.playTap()
+                    }
+
+                    Text(sensitivityBinding.wrappedValue.detail)
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
                 }
             }
         }

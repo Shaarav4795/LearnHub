@@ -27,11 +27,40 @@ enum AIModelPreference: String, CaseIterable, Identifiable {
     }
 }
 
+enum ReminderSensitivity: String, CaseIterable, Identifiable {
+    case low
+    case medium
+    case high
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .low: return "Low"
+        case .medium: return "Medium"
+        case .high: return "High"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .low:
+            return "Fewer reminders and longer spacing."
+        case .medium:
+            return "Balanced reminder frequency."
+        case .high:
+            return "Earlier and more frequent reminders."
+        }
+    }
+}
+
 enum ModelSettings {
     enum Keys {
         static let preference = "ai.modelPreference"
         static let groqApiKey = "ai.groq.apiKey"
         static let groqModel = "ai.groq.model"
+        static let smartRemindersEnabled = "notifications.smart.enabled"
+        static let smartReminderSensitivity = "notifications.smart.sensitivity"
     }
 
     // Default Groq model is now the compound family (falls back to smaller / OSS models)

@@ -492,11 +492,17 @@ final class GamificationManager: ObservableObject {
         try? context.save()
         updateWidgetData(from: profile)
 
-        // Refresh reminders to avoid nudging immediately after study.
+        NotificationManager.shared.recordStudyActivity(at: profile.lastStudyDate ?? Date())
+
+        // Refresh predictive reminders to avoid nudging immediately after study.
         Task {
-            await NotificationManager.shared.refreshStudyReminders(
-                lastStudyDate: profile.lastStudyDate,
-                streak: profile.currentStreak
+            await NotificationManager.shared.refreshPredictiveReminders(
+                context: NotificationManager.PredictiveReminderContext(
+                    lastStudyDate: profile.lastStudyDate,
+                    streak: profile.currentStreak,
+                    totalQuestionsCorrect: profile.totalQuestionsCorrect,
+                    totalQuizzesTaken: profile.totalQuizzesTaken
+                )
             )
         }
     }
@@ -518,6 +524,8 @@ final class GamificationManager: ObservableObject {
         if isPerfect {
             profile.perfectQuizzes += 1
         }
+
+        NotificationManager.shared.recordQuizPerformance(score: score, totalQuestions: totalQuestions)
         
         // Calculate XP earned from this quiz.
         var xp = XPRewards.quizCompleted

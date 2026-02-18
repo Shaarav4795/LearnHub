@@ -150,6 +150,7 @@ final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
         // Clear any badge when the user interacts with a notification.
         UNUserNotificationCenter.current().setBadgeCount(0) { _ in }
+        NotificationManager.shared.handleNotificationResponse(response)
         completionHandler()
     }
 
