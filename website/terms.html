@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>LearnHub - Terms of Use</title>
+  <meta name="description" content="LearnHub Terms of Use.">  <link rel="icon" href="favicon.png" type="image/png">  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'media',
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Inter', 'sans-serif'], display: ['Space Grotesk', 'sans-serif'] },
+          colors: { 'hub-bg': '#7C8CA5', 'hub-blue': '#1d4ed8', 'hub-dark': '#0f172a' }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale; }
+  </style>
+</head>
+<body class="bg-hub-bg dark:bg-slate-900 min-h-screen p-2 md:p-6 lg:p-8 font-sans selection:bg-blue-700 selection:text-white dark:text-slate-300">
+  <main class="max-w-4xl mx-auto bg-white dark:bg-slate-800 rounded-2xl shadow-2xl p-12">
+    <header class="flex items-center justify-between mb-8">
+      <div class="flex items-center gap-3">
+        <img src="favicon.png" alt="LearnHub" class="w-8 h-8 object-contain">
+        <span class="font-display font-bold text-lg text-hub-dark dark:text-slate-100">LearnHub</span>
+      </div>
+      <a href="/" class="text-sm font-semibold text-slate-700 hover:text-hub-blue">Home</a>
+    </header>
+
+    <h1 class="text-3xl font-display font-bold text-hub-dark dark:text-slate-100 mb-4">Terms of Use</h1>
+    <p class="text-slate-600 dark:text-slate-400 mb-6">Quick, clear terms for using LearnHub. By using the app you agree to the points below.</p>
+
+    <div class="space-y-6 text-slate-600 dark:text-slate-400">
+      <div>
+        <h3 class="font-semibold text-hub-dark dark:text-slate-100">Use of the app</h3>
+        <p class="mt-2 text-slate-600 dark:text-slate-400">LearnHub is provided for personal educational use. Do not use the service to infringe third-party rights.</p>
+      </div>
+
+      <div>
+        <h3 class="font-semibold text-hub-dark dark:text-slate-100">Data & privacy</h3>
+        <p class="mt-2 text-slate-600 dark:text-slate-400">We collect no personal information except anonymous analytics. We do not access or retain your study material.</p>
+      </div>
+
+      <div>
+        <h3 class="font-semibold text-hub-dark dark:text-slate-100">Intellectual property</h3>
+        <p class="mt-2 text-slate-600 dark:text-slate-400">You retain ownership of the content you create. LearnHub may use aggregated anonymized data to improve the product.</p>
+      </div>
+
+      <div>
+        <h3 class="font-semibold text-hub-dark dark:text-slate-100">Contact & jurisdiction</h3>
+        <p class="mt-2 text-slate-600 dark:text-slate-400">Questions? Email <a class="text-hub-blue font-semibold" href="mailto:hi@shaarav.xyz">hi@shaarav.xyz</a>. These terms are governed by applicable law.</p>
+      </div>
+    </div>
+
+    <footer class="mt-10 border-t pt-6 flex justify-between items-center text-sm text-slate-500 dark:text-slate-400">
+      <div>© 2026 LearnHub Inc.</div>
+      <div class="flex gap-6">
+        <a href="privacy.html" class="hover:text-hub-blue">Privacy</a>
+        <a href="terms.html" class="hover:text-hub-blue">Terms</a>
+      </div>
+    </footer>
+  </main>
+</body>
+</html>
