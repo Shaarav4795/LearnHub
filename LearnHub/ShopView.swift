@@ -19,10 +19,8 @@ struct ShopView: View {
     @State private var isProcessingPurchase = false
     @State private var isCatalogBooting = true
 
-    @State private var xpShare: Double = 0.25
     @State private var boosterPercent: Int = 50
-    @State private var boosterDurationValue: Int = 4
-    @State private var boosterDurationUnit: GamificationManager.BoosterDurationUnit = .hours
+    @State private var boosterDurationHours: Int = 4
 
     private var profile: UserProfile {
         if let existing = profiles.first {
@@ -39,9 +37,7 @@ struct ShopView: View {
         gamificationManager.currentShopTier(for: profile)
     }
 
-    private var boosterDurationHours: Int {
-        boosterDurationUnit == .hours ? max(1, boosterDurationValue) : max(1, boosterDurationValue) * 24
-    }
+
 
     private var boosterTierRequirement: ShopXPTier {
         gamificationManager.xpBoosterTierRequirement(percent: boosterPercent, durationHours: boosterDurationHours)
@@ -51,17 +47,12 @@ struct ShopView: View {
         shopTier.maxBoosterPercent >= boosterPercent && shopTier.rawValue >= boosterTierRequirement.rawValue
     }
 
-    private var boosterBaseCoinPrice: Int {
+    private var boosterCoinCost: Int {
         gamificationManager.xpBoosterCoinCost(
             percent: boosterPercent,
-            durationValue: boosterDurationValue,
-            unit: boosterDurationUnit,
+            durationHours: boosterDurationHours,
             activeCount: activeBoosters.count
         )
-    }
-
-    private var boosterHybridPrice: GamificationManager.HybridPrice {
-        gamificationManager.hybridPrice(forCoinPrice: boosterBaseCoinPrice, xpShare: xpShare)
     }
 
     enum ShopTab: String, CaseIterable {
@@ -262,60 +253,31 @@ struct ShopView: View {
         }
     }
 
-    // MARK: - Shared Spend Controls
 
-    private var xpSpendCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("Hybrid Spend")
-                    .font(.subheadline.bold())
-                Spacer()
-                Text("XP Share: \(Int(xpShare * 100))%")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-
-            Slider(value: $xpShare, in: 0...ShopEconomy.maxXPShare, step: 0.05)
-                .tint(.orange)
-
-            Text("Use XP to reduce coin cost. Higher XP share spends more XP per purchase.")
-                .font(.caption)
-                .foregroundColor(.secondary)
-        }
-        .padding()
-        .background(Color(uiColor: .secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(Color.orange.opacity(0.2), lineWidth: 1)
-        )
-    }
 
     // MARK: - Avatars
 
     private var avatarsGrid: some View {
         VStack(spacing: 12) {
-            xpSpendCard
-
             LazyVGrid(columns: avatarColumns, spacing: 12) {
                 ForEach(AvatarItem.allAvatars) { avatar in
-                    let price = gamificationManager.hybridPrice(forCoinPrice: avatar.cost, xpShare: xpShare)
+                    let coinCost = avatar.cost
                     AvatarShopCard(
                         avatar: avatar,
-                        price: price,
+                        coinCost: coinCost,
                         isOwned: gamificationManager.isItemOwned(avatar.id, itemType: "avatar", profile: profile),
                         isSelected: profile.selectedAvatarId == avatar.id,
                         isLocked: profile.level < avatar.requiredLevel,
-                        canAfford: gamificationManager.canAffordHybridPrice(price, profile: profile),
+                        canAfford: profile.coins >= coinCost,
                         onSelect: {
                             _ = gamificationManager.selectAvatar(avatar.id, for: profile, context: modelContext)
                         },
                         onPurchase: {
                             selectedItemName = avatar.name
-                            selectedItemCoins = price.coins
-                            selectedItemXP = price.xp
+                            selectedItemCoins = coinCost
+                            selectedItemXP = 0
                             pendingPurchase = {
-                                if gamificationManager.purchaseAvatar(avatar, xpShare: xpShare, for: profile, context: modelContext) {
+                                if gamificationManager.purchaseAvatar(avatar, for: profile, context: modelContext) {
                                     _ = gamificationManager.selectAvatar(avatar.id, for: profile, context: modelContext)
                                     return true
                                 }
@@ -337,27 +299,25 @@ struct ShopView: View {
 
     private var themesGrid: some View {
         VStack(spacing: 12) {
-            xpSpendCard
-
             LazyVGrid(columns: themeColumns, spacing: 12) {
                 ForEach(ThemeItem.allThemes) { theme in
-                    let price = gamificationManager.hybridPrice(forCoinPrice: theme.cost, xpShare: xpShare)
+                    let coinCost = theme.cost
                     ThemeShopCard(
                         theme: theme,
-                        price: price,
+                        coinCost: coinCost,
                         isOwned: gamificationManager.isItemOwned(theme.id, itemType: "theme", profile: profile),
                         isSelected: profile.selectedThemeId == theme.id,
                         isLocked: profile.level < theme.requiredLevel,
-                        canAfford: gamificationManager.canAffordHybridPrice(price, profile: profile),
+                        canAfford: profile.coins >= coinCost,
                         onSelect: {
                             _ = gamificationManager.selectTheme(theme.id, for: profile, context: modelContext)
                         },
                         onPurchase: {
                             selectedItemName = theme.name
-                            selectedItemCoins = price.coins
-                            selectedItemXP = price.xp
+                            selectedItemCoins = coinCost
+                            selectedItemXP = 0
                             pendingPurchase = {
-                                if gamificationManager.purchaseTheme(theme, xpShare: xpShare, for: profile, context: modelContext) {
+                                if gamificationManager.purchaseTheme(theme, for: profile, context: modelContext) {
                                     _ = gamificationManager.selectTheme(theme.id, for: profile, context: modelContext)
                                     return true
                                 }
@@ -379,8 +339,6 @@ struct ShopView: View {
 
     private var consumablesSection: some View {
         VStack(spacing: 12) {
-            xpSpendCard
-            
             // Tier requirement warning banner
             if shopTier.rawValue < ShopXPTier.learner.rawValue {
                 VStack(alignment: .leading, spacing: 6) {
@@ -411,10 +369,9 @@ struct ShopView: View {
     }
 
     private var streakFreezeCard: some View {
-        let baseCoins = gamificationManager.streakFreezeCoinCost(currentTokens: profile.streakFreezeTokens)
-        let price = gamificationManager.hybridPrice(forCoinPrice: baseCoins, xpShare: xpShare)
+        let coinCost = gamificationManager.streakFreezeCoinCost(currentTokens: profile.streakFreezeTokens)
         let canBuy = profile.streakFreezeTokens < ShopEconomy.maxStreakFreezeTokens &&
-            gamificationManager.canAffordHybridPrice(price, profile: profile) &&
+            profile.coins >= coinCost &&
             shopTier.rawValue >= ShopXPTier.learner.rawValue
 
         return VStack(alignment: .leading, spacing: 10) {
@@ -439,15 +396,26 @@ struct ShopView: View {
             }
 
             HStack {
-                PriceTagView(price: price)
+                HStack(spacing: 8) {
+                    Image(systemName: "dollarsign.circle.fill")
+                        .foregroundColor(.yellow)
+                        .font(.caption)
+                    Text("\(coinCost)")
+                        .font(.caption.bold())
+                        .foregroundColor(.yellow)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Color(uiColor: .tertiarySystemGroupedBackground))
+                .clipShape(Capsule())
                 Spacer()
                 Button("Buy Token") {
                     HapticsManager.shared.playTap()
                     selectedItemName = "Streak Freeze"
-                    selectedItemCoins = price.coins
-                    selectedItemXP = price.xp
+                    selectedItemCoins = coinCost
+                    selectedItemXP = 0
                     pendingPurchase = {
-                        gamificationManager.purchaseStreakFreeze(for: profile, xpShare: xpShare, context: modelContext)
+                        gamificationManager.purchaseStreakFreeze(for: profile, context: modelContext)
                     }
                     withAnimation {
                         showPurchaseAlert = true
@@ -473,14 +441,14 @@ struct ShopView: View {
     }
 
     private var xpBoosterCard: some View {
-        let canAfford = gamificationManager.canAffordHybridPrice(boosterHybridPrice, profile: profile)
+        let canAfford = profile.coins >= boosterCoinCost
         let canBuy = canAfford && canConfigureBoosterAtCurrentTier
 
         return VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 6) {
                 Label("XP Booster", systemImage: "bolt.fill")
                     .font(.headline)
-                Text("Earn \(boosterPercent)% more XP for \(boosterDurationValue) \(boosterDurationUnit == .hours ? "hours" : "days")")
+                Text("Earn \(boosterPercent)% more XP for \(boosterDurationHours) hours")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
@@ -503,40 +471,42 @@ struct ShopView: View {
                     Text("Duration")
                         .font(.subheadline)
                     Spacer()
-                    Stepper(value: $boosterDurationValue, in: 1...72) {
+                    Stepper(value: $boosterDurationHours, in: 1...48) {
                         HStack(spacing: 4) {
-                            Text("\(boosterDurationValue)")
+                            Text("\(boosterDurationHours)")
                                 .font(.subheadline.bold())
                                 .foregroundColor(.purple)
-                            Text(boosterDurationUnit == .hours ? "hours" : "days")
+                            Text("hours")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                         }
                     }
                 }
-
-                Picker("Duration Unit", selection: $boosterDurationUnit) {
-                    Text("Hours").tag(GamificationManager.BoosterDurationUnit.hours)
-                    Text("Days").tag(GamificationManager.BoosterDurationUnit.days)
-                }
-                .pickerStyle(.segmented)
-                .font(.caption)
             }
 
             HStack {
-                PriceTagView(price: boosterHybridPrice)
+                HStack(spacing: 8) {
+                    Image(systemName: "dollarsign.circle.fill")
+                        .foregroundColor(.yellow)
+                        .font(.caption)
+                    Text("\(boosterCoinCost)")
+                        .font(.caption.bold())
+                        .foregroundColor(.yellow)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Color(uiColor: .tertiarySystemGroupedBackground))
+                .clipShape(Capsule())
                 Spacer()
                 Button("Activate") {
                     HapticsManager.shared.playTap()
                     selectedItemName = "XP Booster (+\(boosterPercent)%)"
-                    selectedItemCoins = boosterHybridPrice.coins
-                    selectedItemXP = boosterHybridPrice.xp
+                    selectedItemCoins = boosterCoinCost
+                    selectedItemXP = 0
                     pendingPurchase = {
                         gamificationManager.purchaseXPBooster(
                             percent: boosterPercent,
-                            durationValue: boosterDurationValue,
-                            durationUnit: boosterDurationUnit,
-                            xpShare: xpShare,
+                            durationHours: boosterDurationHours,
                             for: profile,
                             context: modelContext
                         )
@@ -630,7 +600,7 @@ private struct PriceTagView: View {
 
 struct AvatarShopCard: View {
     let avatar: AvatarItem
-    let price: GamificationManager.HybridPrice
+    let coinCost: Int
     let isOwned: Bool
     let isSelected: Bool
     let isLocked: Bool
@@ -702,7 +672,18 @@ struct AvatarShopCard: View {
                     HapticsManager.shared.playTap()
                     onPurchase()
                 }) {
-                    PriceTagView(price: price)
+                    HStack(spacing: 3) {
+                        Image(systemName: "dollarsign.circle.fill")
+                            .foregroundColor(.yellow)
+                            .font(.caption)
+                        Text("\(coinCost)")
+                            .font(.caption.bold())
+                            .foregroundColor(.yellow)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color(uiColor: .tertiarySystemGroupedBackground))
+                    .clipShape(Capsule())
                 }
                 .disabled(!canAfford)
                 .buttonStyle(PressScaleButtonStyle())
@@ -725,7 +706,7 @@ struct AvatarShopCard: View {
 
 struct ThemeShopCard: View {
     let theme: ThemeItem
-    let price: GamificationManager.HybridPrice
+    let coinCost: Int
     let isOwned: Bool
     let isSelected: Bool
     let isLocked: Bool
@@ -776,7 +757,18 @@ struct ThemeShopCard: View {
                     HapticsManager.shared.playTap()
                     onPurchase()
                 }) {
-                    PriceTagView(price: price)
+                    HStack(spacing: 3) {
+                        Image(systemName: "dollarsign.circle.fill")
+                            .foregroundColor(.yellow)
+                            .font(.caption)
+                        Text("\(coinCost)")
+                            .font(.caption.bold())
+                            .foregroundColor(.yellow)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color(uiColor: .tertiarySystemGroupedBackground))
+                    .clipShape(Capsule())
                 }
                 .disabled(!canAfford)
                 .buttonStyle(PressScaleButtonStyle())

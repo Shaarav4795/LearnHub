@@ -323,14 +323,29 @@ final class GamificationManager: ObservableObject {
         return max(10, Int((raw / 5.0).rounded() * 5.0))
     }
 
-    func xpBoosterCoinCost(percent: Int, durationValue: Int, unit: BoosterDurationUnit, activeCount: Int) -> Int {
+    func xpBoosterCoinCost(percent: Int, durationHours: Int, activeCount: Int) -> Int {
         let boundedPercent = max(25, min(percent, 300))
-        let durationHours = unit == .hours ? max(1, durationValue) : max(1, durationValue) * 24
         let durationComponent = 5.0 * sqrt(Double(durationHours))
         let interaction = 0.08 * Double(boundedPercent) * log(1.0 + Double(durationHours))
         let base = 12.0 + (0.35 * Double(boundedPercent)) + durationComponent + interaction
         let stackFactor = 1.0 + (0.22 * Double(max(0, activeCount)))
-        let raw = base * stackFactor
+        
+        // Apply tier multiplier based on percent - higher percents are more expensive
+        let tierMultiplier: Double
+        switch boundedPercent {
+        case ...50:
+            tierMultiplier = 1.0
+        case ...100:
+            tierMultiplier = 1.4
+        case ...150:
+            tierMultiplier = 1.9
+        case ...250:
+            tierMultiplier = 2.6
+        default:
+            tierMultiplier = 3.4
+        }
+        
+        let raw = base * stackFactor * tierMultiplier
         return max(15, Int((raw / 5.0).rounded() * 5.0))
     }
 
@@ -377,14 +392,14 @@ final class GamificationManager: ObservableObject {
     }
 
     @MainActor
-    func purchaseStreakFreeze(for profile: UserProfile, xpShare: Double, context: ModelContext) -> Bool {
+    func purchaseStreakFreeze(for profile: UserProfile, context: ModelContext) -> Bool {
         guard profile.streakFreezeTokens < ShopEconomy.maxStreakFreezeTokens else { return false }
         guard currentShopTier(for: profile).rawValue >= ShopXPTier.learner.rawValue else { return false }
 
         let coinPrice = streakFreezeCoinCost(currentTokens: profile.streakFreezeTokens)
-        let hybrid = hybridPrice(forCoinPrice: coinPrice, xpShare: xpShare)
-        guard spendHybridPrice(hybrid, from: profile, context: context) else { return false }
-
+        guard profile.coins >= coinPrice else { return false }
+        
+        profile.coins -= coinPrice
         profile.streakFreezeTokens += 1
         try? context.save()
         updateWidgetData(from: profile)
@@ -394,9 +409,7 @@ final class GamificationManager: ObservableObject {
     @MainActor
     func purchaseXPBooster(
         percent: Int,
-        durationValue: Int,
-        durationUnit: BoosterDurationUnit,
-        xpShare: Double,
+        durationHours: Int,
         for profile: UserProfile,
         context: ModelContext
     ) -> Bool {
@@ -404,23 +417,26 @@ final class GamificationManager: ObservableObject {
 
         let tier = currentShopTier(for: profile)
         let clampedPercent = max(25, min(percent, 300))
-        let durationHours = durationUnit == .hours ? max(1, durationValue) : max(1, durationValue) * 24
+        let clampedHours = max(1, min(durationHours, 48))
         guard clampedPercent <= tier.maxBoosterPercent else { return false }
-        let requiredTier = xpBoosterTierRequirement(percent: clampedPercent, durationHours: durationHours)
+        let requiredTier = xpBoosterTierRequirement(percent: clampedPercent, durationHours: clampedHours)
         guard tier.rawValue >= requiredTier.rawValue else { return false }
 
-        let coinPrice = xpBoosterCoinCost(percent: clampedPercent, durationValue: durationValue, unit: durationUnit, activeCount: profile.activeXPBoosters.count)
-        let hybrid = hybridPrice(forCoinPrice: coinPrice, xpShare: xpShare)
-        guard spendHybridPrice(hybrid, from: profile, context: context) else { return false }
+        let coinPrice = xpBoosterCoinCost(percent: clampedPercent, durationHours: clampedHours, activeCount: profile.activeXPBoosters.count)
+        guard profile.coins >= coinPrice else { return false }
+        
+        profile.coins -= coinPrice
+        try? context.save()
+        updateWidgetData(from: profile)
 
         let now = Date()
         if let matchingActive = profile.activeXPBoosters.first(where: { $0.percentBonus == clampedPercent && $0.endsAt > now }) {
-            matchingActive.endsAt = matchingActive.endsAt.addingTimeInterval(TimeInterval(durationHours * 3600))
+            matchingActive.endsAt = matchingActive.endsAt.addingTimeInterval(TimeInterval(clampedHours * 3600))
         } else {
             let booster = ActiveXPBooster(
                 percentBonus: clampedPercent,
                 startsAt: now,
-                endsAt: now.addingTimeInterval(TimeInterval(durationHours * 3600))
+                endsAt: now.addingTimeInterval(TimeInterval(clampedHours * 3600))
             )
             booster.userProfile = profile
             context.insert(booster)
@@ -798,24 +814,7 @@ final class GamificationManager: ObservableObject {
         return true
     }
 
-    @MainActor
-    func purchaseAvatar(_ avatar: AvatarItem, xpShare: Double, for profile: UserProfile, context: ModelContext) -> Bool {
-        if profile.unlockedItems.contains(where: { $0.itemId == avatar.id && $0.itemType == "avatar" }) {
-            return false
-        }
-
-        guard profile.level >= avatar.requiredLevel else { return false }
-        let price = hybridPrice(forCoinPrice: avatar.cost, xpShare: xpShare)
-        guard spendHybridPrice(price, from: profile, context: context) else { return false }
-
-        let item = UnlockedItem(itemId: avatar.id, itemType: "avatar")
-        item.userProfile = profile
-        context.insert(item)
-
-        try? context.save()
-        return true
-    }
-    
+    // Deprecated: Use purchaseAvatar without xpShare parameter instead
     @MainActor
     func purchaseTheme(_ theme: ThemeItem, for profile: UserProfile, context: ModelContext) -> Bool {
         // Prevent purchasing duplicates.
@@ -837,25 +836,8 @@ final class GamificationManager: ObservableObject {
         try? context.save()
         return true
     }
-
-    @MainActor
-    func purchaseTheme(_ theme: ThemeItem, xpShare: Double, for profile: UserProfile, context: ModelContext) -> Bool {
-        if profile.unlockedItems.contains(where: { $0.itemId == theme.id && $0.itemType == "theme" }) {
-            return false
-        }
-
-        guard profile.level >= theme.requiredLevel else { return false }
-        let price = hybridPrice(forCoinPrice: theme.cost, xpShare: xpShare)
-        guard spendHybridPrice(price, from: profile, context: context) else { return false }
-
-        let item = UnlockedItem(itemId: theme.id, itemType: "theme")
-        item.userProfile = profile
-        context.insert(item)
-
-        try? context.save()
-        return true
-    }
     
+
     @MainActor
     func selectAvatar(_ avatarId: String, for profile: UserProfile, context: ModelContext) -> Bool {
         // Verify ownership; default avatar is always owned.
