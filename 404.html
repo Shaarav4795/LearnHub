@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>LearnHub</title>
+</head>
+<body>
+  <script>
+    (function () {
+      const pathParts = window.location.pathname.split('/').filter(Boolean);
+      if (pathParts[0] === 'share' && pathParts[1]) {
+        const code = encodeURIComponent(pathParts[1]);
+        window.location.replace(`/share/?code=${code}`);
+        return;
+      }
+
+      window.location.replace('/');
+    })();
+  </script>
+</body>
+</html>
