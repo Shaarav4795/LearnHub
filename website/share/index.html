@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Open LearnHub Share</title>
+  <meta name="description" content="Open shared LearnHub study sets in the app, or download LearnHub from the App Store.">
+  <meta name="robots" content="index,follow,max-image-preview:large">
+  <meta name="theme-color" content="#2563eb">
+
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="LearnHub">
+  <meta property="og:title" content="Open this LearnHub study set">
+  <meta property="og:description" content="Study together: open this shared LearnHub set, preview it, then save it to My Sets.">
+  <meta property="og:url" content="https://learnhub.shaarav.xyz/share/">
+  <meta property="og:image" content="https://learnhub.shaarav.xyz/apple.png">
+
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Open this LearnHub study set">
+  <meta name="twitter:description" content="Open the shared set in LearnHub and save it to your library.">
+  <meta name="twitter:image" content="https://learnhub.shaarav.xyz/apple.png">
+
+  <meta name="apple-itunes-app" content="app-id=0000000000, app-argument=https://learnhub.shaarav.xyz/share/">
+
+  <link rel="canonical" href="https://learnhub.shaarav.xyz/share/">
+  <link rel="icon" href="/favicon.png" type="image/png">
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-screen bg-slate-100 text-slate-900 flex items-center justify-center p-6">
+  <main class="w-full max-w-lg bg-white rounded-2xl shadow-xl p-8 space-y-5">
+    <h1 class="text-2xl font-bold">Open this LearnHub set</h1>
+    <p id="status" class="text-slate-600">Preparing your share link...</p>
+
+    <div class="rounded-lg bg-slate-50 border border-slate-200 p-4">
+      <p class="text-xs uppercase tracking-wide text-slate-500">Share Code</p>
+      <p id="codeLabel" class="font-mono text-lg mt-1">—</p>
+    </div>
+
+    <div class="flex flex-col sm:flex-row gap-3">
+      <a id="openAppButton" href="#" class="inline-flex justify-center items-center px-4 py-3 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 transition">Open in LearnHub</a>
+      <a id="downloadButton" href="https://apps.apple.com" class="inline-flex justify-center items-center px-4 py-3 rounded-lg border border-slate-300 font-semibold hover:bg-slate-50 transition">Download on App Store</a>
+    </div>
+
+    <div class="rounded-lg bg-blue-50 border border-blue-100 p-4 space-y-2">
+      <p class="text-sm font-semibold text-blue-900">If your friend sent this on iMessage</p>
+      <ol class="list-decimal pl-5 text-sm text-blue-900/90 space-y-1">
+        <li>Tap <strong>Open in LearnHub</strong>.</li>
+        <li>If nothing happens, install the app, then tap the link again.</li>
+        <li>In app, preview the set and tap <strong>Save to My Sets</strong>.</li>
+      </ol>
+    </div>
+
+    <p class="text-xs text-slate-500">If LearnHub is installed, this should open directly to the shared set preview.</p>
+  </main>
+
+  <script>
+    (function () {
+      const status = document.getElementById('status');
+      const codeLabel = document.getElementById('codeLabel');
+      const openAppButton = document.getElementById('openAppButton');
+
+      const pathParts = window.location.pathname.split('/').filter(Boolean);
+      const fromPath = pathParts[0] === 'share' && pathParts[1] ? pathParts[1] : null;
+      const fromQuery = new URLSearchParams(window.location.search).get('code');
+      const code = (fromPath || fromQuery || '').trim();
+
+      if (!code) {
+        status.textContent = 'Invalid share link. Ask your friend to send it again.';
+        return;
+      }
+
+      codeLabel.textContent = code;
+      const appURL = `learnhub://share/${encodeURIComponent(code)}`;
+      openAppButton.href = appURL;
+
+      document.title = `Open LearnHub Set • ${code}`;
+
+      status.textContent = 'Opening LearnHub…';
+
+      const start = Date.now();
+      window.location.href = appURL;
+
+      setTimeout(function () {
+        const elapsed = Date.now() - start;
+        if (elapsed > 1300) {
+          status.textContent = 'If the app did not open, tap “Open in LearnHub” or install it from the App Store.';
+        }
+      }, 1400);
+    })();
+  </script>
+</body>
+</html>

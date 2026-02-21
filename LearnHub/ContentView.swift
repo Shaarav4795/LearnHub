@@ -33,6 +33,16 @@ enum AppTab: Int, CaseIterable {
     }
 }
 
+private enum HomeSubtab: String, CaseIterable {
+    case mySets = "My Sets"
+    case explore = "Explore"
+}
+
+private struct DeepLinkAlert: Identifiable {
+    let id = UUID()
+    let message: String
+}
+
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.colorScheme) private var colorScheme
@@ -61,6 +71,10 @@ struct ContentView: View {
     @State private var isFoldersExpanded = true
     @State private var isStudySetsExpanded = true
     @State private var selectedTab: AppTab = .home
+    @State private var selectedHomeSubtab: HomeSubtab = .mySets
+    @State private var setToShare: StudySet? = nil
+    @State private var deepLinkedSharedSet: SharedStudySet? = nil
+    @State private var deepLinkAlert: DeepLinkAlert? = nil
     @State private var levelUpConfettiCounter = 0
     
     private var profile: UserProfile {
@@ -186,18 +200,85 @@ struct ContentView: View {
     }
     
     private func handleDeepLink(_ url: URL) {
-        guard url.scheme == "learnhub" else { return }
-        
-        if url.host == "flashcards", let components = URLComponents(url: url, resolvingAgainstBaseURL: true) {
-            if let setIDString = components.queryItems?.first(where: { $0.name == "setID" })?.value,
-               let setID = UUID(uuidString: setIDString),
-               let set = studySets.first(where: { $0.id == setID }) {
-                selectedTab = .home
-                navigationPath.append(set)
+        if url.scheme == "learnhub" {
+            if url.host == "flashcards", let components = URLComponents(url: url, resolvingAgainstBaseURL: true) {
+                if let setIDString = components.queryItems?.first(where: { $0.name == "setID" })?.value,
+                   let setID = UUID(uuidString: setIDString),
+                   let set = studySets.first(where: { $0.id == setID }) {
+                    selectedTab = .home
+                    navigationPath.append(set)
+                }
+                return
             }
-        } else if url.host == "stats" {
-            // Deep-link from widgets or notifications to the Profile tab.
-            selectedTab = .profile
+
+            if url.host == "stats" {
+                // Deep-link from widgets or notifications to the Profile tab.
+                selectedTab = .profile
+                return
+            }
+        }
+
+        guard let shortCode = extractSharedSetShortCode(from: url) else {
+            return
+        }
+
+        Task {
+            await openSharedSetFromDeepLink(shortCode: shortCode)
+        }
+    }
+
+    private func extractSharedSetShortCode(from url: URL) -> String? {
+        let pathComponents = url.pathComponents.filter { $0 != "/" }
+
+        if url.scheme == "learnhub" {
+            if url.host == "share" {
+                if let first = pathComponents.first, !first.isEmpty {
+                    return first
+                }
+
+                if let components = URLComponents(url: url, resolvingAgainstBaseURL: true),
+                   let code = components.queryItems?.first(where: { $0.name == "code" })?.value,
+                   !code.isEmpty {
+                    return code
+                }
+            }
+            return nil
+        }
+
+        let isWebDeepLink = (url.scheme == "https" || url.scheme == "http")
+            && (url.host == "learnhub.shaarav.xyz" || url.host == "www.learnhub.shaarav.xyz")
+        guard isWebDeepLink else {
+            return nil
+        }
+
+        if pathComponents.count >= 2,
+           pathComponents[0].lowercased() == "share",
+           !pathComponents[1].isEmpty {
+            return pathComponents[1]
+        }
+
+        if pathComponents.count == 1,
+           pathComponents[0].lowercased() == "share",
+           let components = URLComponents(url: url, resolvingAgainstBaseURL: true),
+           let code = components.queryItems?.first(where: { $0.name == "code" })?.value,
+           !code.isEmpty {
+            return code
+        }
+
+        return nil
+    }
+
+    @MainActor
+    private func openSharedSetFromDeepLink(shortCode: String) async {
+        selectedTab = .home
+        selectedHomeSubtab = .explore
+        deepLinkAlert = nil
+
+        do {
+            let sharedSet = try await ExploreService.shared.fetchFullStudySet(shortCode: shortCode)
+            deepLinkedSharedSet = sharedSet
+        } catch {
+            deepLinkAlert = DeepLinkAlert(message: error.localizedDescription)
         }
     }
     
@@ -209,7 +290,9 @@ struct ContentView: View {
                 Color(uiColor: .systemGroupedBackground)
                     .ignoresSafeArea()
                 
-                if studySets.isEmpty && studyFolders.isEmpty && searchText.isEmpty {
+                if selectedHomeSubtab == .explore {
+                    ExploreView()
+                } else if studySets.isEmpty && studyFolders.isEmpty && searchText.isEmpty {
                     VStack(spacing: 16) {
                         // Daily Mix launcher
                         dailyMixCard
@@ -436,6 +519,12 @@ struct ContentView: View {
                                     .listRowBackground(Color.clear)
                                     .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
                                     .contextMenu {
+                                        Button {
+                                            setToShare = set
+                                        } label: {
+                                            Label("Share to Explore", systemImage: "square.and.arrow.up")
+                                        }
+
                                         if !studyFolders.isEmpty {
                                             Menu("Move to Folder", systemImage: "folder") {
                                                 ForEach(studyFolders) { folder in
@@ -517,6 +606,13 @@ struct ContentView: View {
                     .animation(nil, value: searchText)
                 }
             }
+            .safeAreaInset(edge: .top) {
+                homeSubtabPicker
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+                    .padding(.bottom, 10)
+                    .background(.ultraThinMaterial)
+            }
             .blur(radius: isCreationDialogVisible ? 1 : 0)
             .allowsHitTesting(!isCreationDialogVisible)
             .overlay {
@@ -578,6 +674,11 @@ struct ContentView: View {
                     MoveToFolderView(studySet: set, studyFolders: studyFolders)
                 }
             }
+            .sheet(isPresented: Binding(get: { setToShare != nil }, set: { if !$0 { setToShare = nil } })) {
+                if let set = setToShare {
+                    ShareStudySetView(studySet: set, authorName: profile.username)
+                }
+            }
             .toolbar {
                 ToolbarItem(placement: .principal) {
                     Text("LearnHub")
@@ -626,6 +727,18 @@ struct ContentView: View {
             }
             .onOpenURL { url in
                 handleDeepLink(url)
+            }
+            .sheet(item: $deepLinkedSharedSet) { sharedSet in
+                NavigationStack {
+                    ExploreStudySetPreviewView(sharedSet: sharedSet)
+                }
+            }
+            .alert(item: $deepLinkAlert) { alert in
+                Alert(
+                    title: Text("Couldn’t Open Share Link"),
+                    message: Text(alert.message),
+                    dismissButton: .cancel(Text("OK"))
+                )
             }
             .fullScreenCover(isPresented: $isShowingDailyMix) {
                 DailyMixView()
@@ -917,6 +1030,15 @@ struct ContentView: View {
         .padding(.horizontal)
         .padding(.top, 8)
         .transition(.opacity.combined(with: .move(edge: .top)))
+    }
+
+    private var homeSubtabPicker: some View {
+        Picker("Library", selection: $selectedHomeSubtab) {
+            ForEach(HomeSubtab.allCases, id: \.self) { tab in
+                Text(tab.rawValue).tag(tab)
+            }
+        }
+        .pickerStyle(.segmented)
     }
 
     private func deleteItems(offsets: IndexSet) {

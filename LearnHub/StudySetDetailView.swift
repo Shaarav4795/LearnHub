@@ -1,9 +1,16 @@
 import SwiftUI
+import SwiftData
 
 struct StudySetDetailView: View {
     let studySet: StudySet
     @EnvironmentObject private var guideManager: GuideManager
+    @Query private var profiles: [UserProfile]
     @State private var selectedTab: Int = 0
+    @State private var isShowingShareSheet = false
+
+    private var username: String {
+        profiles.first?.username ?? "Student"
+    }
     
     private var isTopicMode: Bool {
         studySet.studySetMode == .topic
@@ -47,6 +54,19 @@ struct StudySetDetailView: View {
         }
         .navigationTitle(studySet.title)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    isShowingShareSheet = true
+                } label: {
+                    Image(systemName: "square.and.arrow.up")
+                }
+                .accessibilityLabel("Share to Explore")
+            }
+        }
+        .sheet(isPresented: $isShowingShareSheet) {
+            ShareStudySetView(studySet: studySet, authorName: username)
+        }
         .overlayPreferenceValue(GuideTargetPreferenceKey.self) { prefs in
             if guideManager.isActive {
                 GeometryReader { proxy in

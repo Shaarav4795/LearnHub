@@ -101,6 +101,8 @@ final class StudySet {
     var summary: String?
     var mode: String = "content"  // "content" or "topic" - default to content for migration
     var iconId: String = "book"   // Default icon for migration
+    var sharedSnapshotId: String?
+    var importedFromSharedId: String?
     
     @Relationship(deleteRule: .cascade) var flashcards: [Flashcard] = []
     @Relationship(deleteRule: .cascade) var questions: [Question] = []
@@ -115,6 +117,8 @@ final class StudySet {
         self.dateCreated = dateCreated
         self.mode = mode.rawValue
         self.iconId = iconId
+        self.sharedSnapshotId = nil
+        self.importedFromSharedId = nil
     }
     
     var studySetMode: StudySetMode {

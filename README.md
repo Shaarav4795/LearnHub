@@ -95,6 +95,10 @@ In Xcode, select the `LearnHub` scheme and press **Cmd+R** to run on a simulator
 1. Get a key: sign up at <https://console.groq.com>, create an API key, and copy it.
 2. Input your key in the app's settings menu.
 
+## Configure Explore sharing (optional, free)
+
+To enable the new Explore feed + sharing, follow the Supabase setup guide in `docs/ExploreBackendSetup.md`.
+
 ## Using the app
 
 1. Launch and allow notifications if you want streak reminders.
