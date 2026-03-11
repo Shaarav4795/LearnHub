@@ -34,7 +34,9 @@ struct ShareStudySetView: View {
                         Button {
                             dismiss()
                         } label: {
-                            Image(systemName: "xmark.circle.fill")
+                            // iOS native close icon
+                            Image(systemName: "xmark")
+                                .font(.headline)
                                 .foregroundStyle(.secondary)
                         }
                         .disabled(isPublishing)
@@ -43,10 +45,13 @@ struct ShareStudySetView: View {
 
                 ToolbarItem(placement: .primaryAction) {
                     if successSnapshotID != nil {
-                        Button("Done") {
+                        Button {
                             dismiss()
+                        } label: {
+                            Image(systemName: "checkmark")
+                                .font(.headline)
+                                .foregroundStyle(.primary)
                         }
-                        .fontWeight(.bold)
                     }
                 }
             }
@@ -190,20 +195,6 @@ struct ShareStudySetView: View {
                     .cornerRadius(12)
                     .padding(.horizontal)
 
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Sharing Tip")
-                            .font(.caption.bold())
-                            .foregroundStyle(Color.accentColor)
-
-                        Text("For iMessage, tell friends: tap the link → Open in LearnHub → Save to My Sets.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding()
-                    .background(Color(uiColor: .secondarySystemGroupedBackground))
-                    .cornerRadius(12)
-                    .padding(.horizontal)
                 }
                 
                 if !generatedDescription.isEmpty {
