@@ -23,7 +23,7 @@ struct FlashcardsEditorView: View {
     init(studySet: StudySet, onChanged: @escaping () -> Void = {}) {
         self.studySet = studySet
         self.onChanged = onChanged
-        _flashcards = State(initialValue: studySet.flashcards)
+        _flashcards = State(initialValue: studySet.flashcards ?? [])
     }
 
     var body: some View {
@@ -181,7 +181,7 @@ struct FlashcardsEditorView: View {
             modelContext.insert(card)
         }
 
-        flashcards = studySet.flashcards
+        flashcards = studySet.flashcards ?? []
         persistChanges(playSuccess: true)
     }
 
@@ -263,7 +263,7 @@ struct QuestionsEditorView: View {
     init(studySet: StudySet, onChanged: @escaping () -> Void = {}) {
         self.studySet = studySet
         self.onChanged = onChanged
-        _questions = State(initialValue: studySet.questions)
+        _questions = State(initialValue: studySet.questions ?? [])
     }
 
     var body: some View {
@@ -433,7 +433,7 @@ struct QuestionsEditorView: View {
             modelContext.insert(question)
         }
 
-        questions = studySet.questions
+        questions = studySet.questions ?? []
         persistChanges(playSuccess: true)
     }
 

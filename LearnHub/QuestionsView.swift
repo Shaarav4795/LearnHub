@@ -14,7 +14,7 @@ struct QuestionsView: View {
     
     init(studySet: StudySet) {
         self.studySet = studySet
-        _questions = State(initialValue: studySet.questions)
+        _questions = State(initialValue: studySet.questions ?? [])
     }
     
     var body: some View {
@@ -78,7 +78,7 @@ struct QuestionsView: View {
         .fullScreenCover(isPresented: $showEditQuestions) {
             NavigationStack {
                 QuestionsEditorView(studySet: studySet) {
-                    questions = studySet.questions
+                    questions = studySet.questions ?? []
                 }
             }
         }
@@ -88,7 +88,7 @@ struct QuestionsView: View {
                 guideManager.advanceAfterVisitedQuiz()
             }
             if newValue == false {
-                questions = studySet.questions
+                questions = studySet.questions ?? []
                 quizConfettiCounter += 1
             }
         }

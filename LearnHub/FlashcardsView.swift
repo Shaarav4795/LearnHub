@@ -21,8 +21,8 @@ struct FlashcardsView: View {
     
     init(studySet: StudySet) {
         self.studySet = studySet
-        _flashcards = State(initialValue: studySet.flashcards)
-        _masteredCardIds = State(initialValue: Set(studySet.flashcards.filter(\.isMastered).map(\.id)))
+        _flashcards = State(initialValue: studySet.flashcards ?? [])
+        _masteredCardIds = State(initialValue: Set((studySet.flashcards ?? []).filter(\.isMastered).map(\.id)))
     }
     
     private var profile: UserProfile {
@@ -246,7 +246,7 @@ struct FlashcardsView: View {
     }
 
     private func refreshFlashcardsFromSource() {
-        flashcards = studySet.flashcards
+        flashcards = studySet.flashcards ?? []
         if flashcards.isEmpty {
             currentIndex = 0
         } else {

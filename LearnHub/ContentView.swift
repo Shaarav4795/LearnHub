@@ -681,10 +681,17 @@ struct ContentView: View {
             }
             .toolbar {
                 ToolbarItem(placement: .principal) {
-                    Text("LearnHub")
-                        .font(.title2.bold())
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.85)
+                    HStack(spacing: 6) {
+                        Text("LearnHub")
+                            .font(.title2.bold())
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.85)
+
+                        Image(systemName: "icloud")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .opacity(0.6)
+                    }
                 }
 
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -882,8 +889,8 @@ struct ContentView: View {
     // MARK: - Daily Mix launcher
     
     private var hasDailyMixContent: Bool {
-        let allQuestions = studySets.flatMap(\.questions)
-        let allFlashcards = studySets.flatMap(\.flashcards)
+        let allQuestions = studySets.flatMap { $0.questions ?? [] }
+        let allFlashcards = studySets.flatMap { $0.flashcards ?? [] }
 
         let dueOrNewQuestionCount = allQuestions.filter { $0.isDueForReview || $0.isNewForReview }.count
         let dueOrNewFlashcardCount = allFlashcards.filter { $0.isDueForReview || $0.isNewForReview }.count
@@ -1090,7 +1097,7 @@ private struct FolderCard: View {
                     HStack(spacing: 6) {
                         Image(systemName: "doc.on.doc.fill")
                             .font(.caption2)
-                        Text("\(folder.studySets.count)")
+                        Text("\((folder.studySets ?? []).count)")
                             .font(.caption)
                             .fontWeight(.semibold)
                     }

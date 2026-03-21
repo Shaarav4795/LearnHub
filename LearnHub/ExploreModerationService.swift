@@ -239,8 +239,8 @@ actor ExploreModerationService {
     }
 
     private func moderationInput(for set: StudySet) -> String {
-        let questionPreview = set.questions.prefix(8).map { "Q: \($0.prompt) | A: \($0.answer)" }.joined(separator: "\n")
-        let flashcardPreview = set.flashcards.prefix(8).map { "Front: \($0.front) | Back: \($0.back)" }.joined(separator: "\n")
+        let questionPreview = (set.questions ?? []).prefix(8).map { "Q: \($0.prompt) | A: \($0.answer)" }.joined(separator: "\n")
+        let flashcardPreview = (set.flashcards ?? []).prefix(8).map { "Front: \($0.front) | Back: \($0.back)" }.joined(separator: "\n")
 
         return """
         Title: \(set.title)
@@ -262,10 +262,10 @@ actor ExploreModerationService {
         let searchableParts = [
             set.title,
             set.summary ?? "",
-            set.questions.map(\.prompt).joined(separator: "\n"),
-            set.questions.map(\.answer).joined(separator: "\n"),
-            set.flashcards.map(\.front).joined(separator: "\n"),
-            set.flashcards.map(\.back).joined(separator: "\n")
+            (set.questions ?? []).map(\.prompt).joined(separator: "\n"),
+            (set.questions ?? []).map(\.answer).joined(separator: "\n"),
+            (set.flashcards ?? []).map(\.front).joined(separator: "\n"),
+            (set.flashcards ?? []).map(\.back).joined(separator: "\n")
         ]
         let corpus = searchableParts.joined(separator: "\n").lowercased()
 

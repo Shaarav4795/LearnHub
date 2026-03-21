@@ -99,7 +99,7 @@ final class GamificationManager: ObservableObject {
                 id: set.id,
                 title: set.title,
                 icon: set.iconId,
-                flashcards: set.flashcards.map { card in
+                flashcards: (set.flashcards ?? []).map { card in
                     WidgetFlashcard(id: card.id, front: card.front, back: card.back, isMastered: card.isMastered)
                 }
             )
@@ -148,7 +148,7 @@ final class GamificationManager: ObservableObject {
                     id: set.id,
                     title: set.title,
                     icon: set.iconId,
-                    flashcards: set.flashcards.map { card in
+                    flashcards: (set.flashcards ?? []).map { card in
                         WidgetFlashcard(id: card.id, front: card.front, back: card.back, isMastered: card.isMastered)
                     }
                 )
@@ -190,7 +190,7 @@ final class GamificationManager: ObservableObject {
     private func dueFlashcardCount(from sets: [StudySet]) -> Int {
         let now = Date()
         return sets.reduce(0) { count, set in
-            count + set.flashcards.filter { card in
+            count + (set.flashcards ?? []).filter { card in
                 guard let due = card.reviewDueDate else { return false }
                 return due <= now
             }.count
@@ -288,7 +288,7 @@ final class GamificationManager: ObservableObject {
 
     func totalXPMultiplierPreview(for profile: UserProfile, at date: Date = Date()) -> Double {
         let streakMultiplier = XPRewards.streakMultiplier(for: profile.currentStreak)
-        let boosterMultiplier = profile.activeXPBoosters
+        let boosterMultiplier = (profile.activeXPBoosters ?? [])
             .filter { $0.endsAt > date }
             .reduce(1.0) { partial, booster in
                 partial * (1.0 + Double(booster.percentBonus) / 100.0)
@@ -305,13 +305,13 @@ final class GamificationManager: ObservableObject {
     @MainActor
     private func removeExpiredBoosters(for profile: UserProfile, context: ModelContext) {
         let now = Date()
-        let expired = profile.activeXPBoosters.filter { $0.endsAt <= now }
+        let expired = (profile.activeXPBoosters ?? []).filter { $0.endsAt <= now }
         guard expired.isEmpty == false else { return }
 
         for booster in expired {
             context.delete(booster)
         }
-        profile.activeXPBoosters.removeAll { $0.endsAt <= now }
+        profile.activeXPBoosters?.removeAll { $0.endsAt <= now }
         try? context.save()
     }
 
@@ -422,7 +422,7 @@ final class GamificationManager: ObservableObject {
         let requiredTier = xpBoosterTierRequirement(percent: clampedPercent, durationHours: clampedHours)
         guard tier.rawValue >= requiredTier.rawValue else { return false }
 
-        let coinPrice = xpBoosterCoinCost(percent: clampedPercent, durationHours: clampedHours, activeCount: profile.activeXPBoosters.count)
+        let coinPrice = xpBoosterCoinCost(percent: clampedPercent, durationHours: clampedHours, activeCount: (profile.activeXPBoosters ?? []).count)
         guard profile.coins >= coinPrice else { return false }
         
         profile.coins -= coinPrice
@@ -430,7 +430,7 @@ final class GamificationManager: ObservableObject {
         updateWidgetData(from: profile)
 
         let now = Date()
-        if let matchingActive = profile.activeXPBoosters.first(where: { $0.percentBonus == clampedPercent && $0.endsAt > now }) {
+        if let matchingActive = profile.activeXPBoosters?.first(where: { $0.percentBonus == clampedPercent && $0.endsAt > now }) {
             matchingActive.endsAt = matchingActive.endsAt.addingTimeInterval(TimeInterval(clampedHours * 3600))
         } else {
             let booster = ActiveXPBooster(
@@ -440,7 +440,8 @@ final class GamificationManager: ObservableObject {
             )
             booster.userProfile = profile
             context.insert(booster)
-            profile.activeXPBoosters.append(booster)
+            if profile.activeXPBoosters == nil { profile.activeXPBoosters = [] }
+            profile.activeXPBoosters?.append(booster)
         }
 
         try? context.save()
@@ -760,7 +761,7 @@ final class GamificationManager: ObservableObject {
     @MainActor
     private func unlockAchievement(_ type: AchievementType, for profile: UserProfile, context: ModelContext) {
         // Skip if the achievement is already unlocked.
-        if profile.achievements.contains(where: { $0.type == type.rawValue }) {
+        if (profile.achievements ?? []).contains(where: { $0.type == type.rawValue }) {
             return
         }
         
@@ -789,13 +790,13 @@ final class GamificationManager: ObservableObject {
     @MainActor
     func activeBoosters(for profile: UserProfile, context: ModelContext) -> [ActiveXPBooster] {
         removeExpiredBoosters(for: profile, context: context)
-        return profile.activeXPBoosters.sorted { $0.endsAt < $1.endsAt }
+        return (profile.activeXPBoosters ?? []).sorted { $0.endsAt < $1.endsAt }
     }
     
     @MainActor
     func purchaseAvatar(_ avatar: AvatarItem, for profile: UserProfile, context: ModelContext) -> Bool {
         // Prevent purchasing duplicates.
-        if profile.unlockedItems.contains(where: { $0.itemId == avatar.id && $0.itemType == "avatar" }) {
+        if (profile.unlockedItems ?? []).contains(where: { $0.itemId == avatar.id && $0.itemType == "avatar" }) {
             return false
         }
         
@@ -818,7 +819,7 @@ final class GamificationManager: ObservableObject {
     @MainActor
     func purchaseTheme(_ theme: ThemeItem, for profile: UserProfile, context: ModelContext) -> Bool {
         // Prevent purchasing duplicates.
-        if profile.unlockedItems.contains(where: { $0.itemId == theme.id && $0.itemType == "theme" }) {
+        if (profile.unlockedItems ?? []).contains(where: { $0.itemId == theme.id && $0.itemType == "theme" }) {
             return false
         }
         
@@ -842,7 +843,7 @@ final class GamificationManager: ObservableObject {
     func selectAvatar(_ avatarId: String, for profile: UserProfile, context: ModelContext) -> Bool {
         // Verify ownership; default avatar is always owned.
         let isOwned = avatarId == "default_avatar" ||
-            profile.unlockedItems.contains(where: { $0.itemId == avatarId && $0.itemType == "avatar" })
+            (profile.unlockedItems ?? []).contains(where: { $0.itemId == avatarId && $0.itemType == "avatar" })
         
         guard isOwned else { return false }
         
@@ -855,7 +856,7 @@ final class GamificationManager: ObservableObject {
     func selectTheme(_ themeId: String, for profile: UserProfile, context: ModelContext) -> Bool {
         // Verify ownership; default theme is always owned.
         let isOwned = themeId == "default_theme" ||
-            profile.unlockedItems.contains(where: { $0.itemId == themeId && $0.itemType == "theme" })
+            (profile.unlockedItems ?? []).contains(where: { $0.itemId == themeId && $0.itemType == "theme" })
         
         guard isOwned else { return false }
         
@@ -871,7 +872,7 @@ final class GamificationManager: ObservableObject {
     func isItemOwned(_ itemId: String, itemType: String, profile: UserProfile) -> Bool {
         if itemType == "avatar" && itemId == "default_avatar" { return true }
         if itemType == "theme" && itemId == "default_theme" { return true }
-        return profile.unlockedItems.contains(where: { $0.itemId == itemId && $0.itemType == itemType })
+        return (profile.unlockedItems ?? []).contains(where: { $0.itemId == itemId && $0.itemType == itemType })
     }
 }
 

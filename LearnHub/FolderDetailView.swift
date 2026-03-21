@@ -17,7 +17,7 @@ struct FolderDetailView: View {
     @State private var folderRenameName = ""
     
     private var filteredStudySets: [StudySet] {
-        let sets = folder.studySets.sorted { $0.dateCreated > $1.dateCreated }
+        let sets = (folder.studySets ?? []).sorted { $0.dateCreated > $1.dateCreated }
         let text = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return sets }
         return sets.filter { set in
@@ -32,7 +32,7 @@ struct FolderDetailView: View {
             Color(uiColor: .systemGroupedBackground)
                 .ignoresSafeArea()
             
-            if folder.studySets.isEmpty {
+            if (folder.studySets ?? []).isEmpty {
                 ContentUnavailableView {
                     Label("Empty Folder", systemImage: "folder")
                 } description: {

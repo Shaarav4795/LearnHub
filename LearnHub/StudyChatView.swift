@@ -346,7 +346,8 @@ struct StudyChatView: View {
             isUser: true
         )
         userMessage.studySet = studySet
-        studySet.chatHistory.append(userMessage)
+        if studySet.chatHistory == nil { studySet.chatHistory = [] }
+                studySet.chatHistory?.append(userMessage)
         modelContext.insert(userMessage)
         if let capturedImage = selectedImage {
             messageImages[userMessage.id] = capturedImage
@@ -392,7 +393,8 @@ struct StudyChatView: View {
                 // Add AI response
                 let aiMessage = ChatMessage(text: normalizeAIOutput(response), isUser: false)
                 aiMessage.studySet = studySet
-                studySet.chatHistory.append(aiMessage)
+                if studySet.chatHistory == nil { studySet.chatHistory = [] }
+                studySet.chatHistory?.append(aiMessage)
                 modelContext.insert(aiMessage)
                 
                 isLoading = false
@@ -429,7 +431,8 @@ struct StudyChatView: View {
                 // Add AI response
                 let aiMessage = ChatMessage(text: normalizeAIOutput(response), isUser: false)
                 aiMessage.studySet = studySet
-                studySet.chatHistory.append(aiMessage)
+                if studySet.chatHistory == nil { studySet.chatHistory = [] }
+                studySet.chatHistory?.append(aiMessage)
                 modelContext.insert(aiMessage)
                 
                 isLoading = false
@@ -482,7 +485,8 @@ struct StudyChatView: View {
         for card in flashcards {
             let newCard = Flashcard(front: card.front, back: card.back)
             newCard.studySet = studySet
-            studySet.flashcards.append(newCard)
+            if studySet.flashcards == nil { studySet.flashcards = [] }
+            studySet.flashcards?.append(newCard)
             modelContext.insert(newCard)
         }
         
@@ -525,10 +529,10 @@ struct StudyChatView: View {
     }
     
     private func clearChatHistory() {
-        for message in studySet.chatHistory {
+        for message in (studySet.chatHistory ?? []) {
             modelContext.delete(message)
         }
-        studySet.chatHistory.removeAll()
+        studySet.chatHistory?.removeAll()
         messageImages.removeAll()
         HapticsManager.shared.lightImpact()
     }

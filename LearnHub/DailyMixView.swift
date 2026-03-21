@@ -520,48 +520,37 @@ struct DailyMixView: View {
                 
                 // Fixed footer for rating + next actions.
                 if isAnswerVisible {
-                    VStack {
-                        Text(currentQuestionIsCorrect ? "How easy was this recall?" : "Rate your recall after seeing the answer")
-                            .font(.caption.bold())
+                    VStack(spacing: 12) {
+                        Text(currentQuestionIsCorrect ? "How easy was this recall?" : "Rate your recall")
+                            .font(.subheadline.bold())
                             .foregroundColor(.secondary)
 
-                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                        HStack(spacing: 8) {
                             ForEach(ReviewRating.allCases, id: \.self) { rating in
                                 Button(action: {
                                     HapticsManager.shared.playTap()
                                     rateCurrentQuestion(rating)
-                                }) {
-                                    HStack(spacing: 4) {
-                                        Image(systemName: rating.icon)
-                                        Text(rating.rawValue)
+                                    // Auto-advance
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                                        nextQuestion()
                                     }
-                                    .font(.caption.bold())
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 8)
+                                }) {
+                                    VStack(spacing: 6) {
+                                        Image(systemName: rating.icon)
+                                            .font(.title3)
+                                        Text(rating.rawValue)
+                                            .font(.caption.bold())
+                                    }
+                                    .foregroundColor(hasRatedCurrentQuestion ? .secondary : rating.color)
                                     .frame(maxWidth: .infinity)
-                                    .background(rating.color)
-                                    .cornerRadius(10)
+                                    .padding(.vertical, 12)
+                                    .background(hasRatedCurrentQuestion ? Color.secondary.opacity(0.1) : rating.color.opacity(0.15))
+                                    .cornerRadius(12)
                                 }
+                                .disabled(hasRatedCurrentQuestion)
                                 .buttonStyle(PressScaleButtonStyle())
                             }
                         }
-
-                        Button(action: {
-                            HapticsManager.shared.playTap()
-                            nextQuestion()
-                        }) {
-                            Text(currentQuestionIndex < mixQuestions.count - 1 ? "Next Question" : "Continue to Flashcards")
-                                .font(.headline)
-                                .foregroundColor(.white)
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(hasRatedCurrentQuestion ? themeManager.primaryColor : .gray)
-                                .cornerRadius(16)
-                        }
-                            .disabled(!hasRatedCurrentQuestion)
-                            .buttonStyle(PressScaleButtonStyle())
-                            .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
                     .padding()
                     .background(Color(uiColor: .systemGroupedBackground))
@@ -828,8 +817,8 @@ struct DailyMixView: View {
         var allFlashcards: [Flashcard] = []
 
         for set in studySets {
-            allQuestions.append(contentsOf: set.questions)
-            allFlashcards.append(contentsOf: set.flashcards)
+            allQuestions.append(contentsOf: set.questions ?? [])
+            allFlashcards.append(contentsOf: set.flashcards ?? [])
         }
 
         let now = Date()
@@ -967,8 +956,10 @@ struct DailyMixView: View {
         gamificationManager.syncStudySets(studySets)
 
         if currentFlashcardIndex < mixFlashcards.count - 1 {
-            withAnimation {
-                currentFlashcardIndex += 1
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                withAnimation {
+                    currentFlashcardIndex += 1
+                }
             }
         }
     }
@@ -1390,28 +1381,28 @@ private struct DailyMixFlashcardView: View {
             }
             
             if isFlipped && !isStudied {
-                VStack(spacing: 8) {
+                VStack(spacing: 12) {
                     Text("Rate your recall")
-                        .font(.caption.bold())
+                        .font(.subheadline.bold())
                         .foregroundColor(.secondary)
 
-                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                    HStack(spacing: 8) {
                         ForEach(DailyMixView.ReviewRating.allCases, id: \.self) { rating in
                             Button(action: {
                                 HapticsManager.shared.playTap()
                                 onRate?(rating)
                             }) {
-                                HStack(spacing: 4) {
+                                VStack(spacing: 6) {
                                     Image(systemName: rating.icon)
+                                        .font(.title3)
                                     Text(rating.rawValue)
+                                        .font(.caption.bold())
                                 }
-                                .font(.caption.bold())
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 8)
+                                .foregroundColor(rating.color)
                                 .frame(maxWidth: .infinity)
-                                .background(rating.color)
-                                .cornerRadius(10)
+                                .padding(.vertical, 12)
+                                .background(rating.color.opacity(0.15))
+                                .cornerRadius(12)
                             }
                             .buttonStyle(PressScaleButtonStyle())
                         }

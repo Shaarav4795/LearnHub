@@ -23,7 +23,8 @@ struct LearnHubApp: App {
         // Try to create with current schema
         let persistentConfiguration = ModelConfiguration(
             schema: schema,
-            isStoredInMemoryOnly: false
+            isStoredInMemoryOnly: false,
+            cloudKitDatabase: .automatic
         )
 
         do {
@@ -52,7 +53,8 @@ struct LearnHubApp: App {
                 // Create fresh container with new schema
                 let freshConfig = ModelConfiguration(
                     schema: schema,
-                    isStoredInMemoryOnly: false
+                    isStoredInMemoryOnly: false,
+                    cloudKitDatabase: .automatic
                 )
                 let container = try ModelContainer(for: schema, configurations: [freshConfig])
                 print("✅ Successfully created new ModelContainer with updated schema")
@@ -64,7 +66,8 @@ struct LearnHubApp: App {
                 do {
                     let inMemoryConfig = ModelConfiguration(
                         schema: schema,
-                        isStoredInMemoryOnly: true
+                        isStoredInMemoryOnly: true,
+                        cloudKitDatabase: .none
                     )
                     return try ModelContainer(for: schema, configurations: [inMemoryConfig])
                 } catch {

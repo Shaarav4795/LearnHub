@@ -238,7 +238,7 @@ struct ProfileView: View {
             StatCard(
                 icon: "trophy.fill",
                 color: .yellow,
-                value: "\(profile.achievements.count)",
+                value: "\(profile.achievements?.count ?? 0)",
                 label: "Achievements"
             )
         }

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Open LearnHub Share</title>
-  <meta name="description" content="Open shared LearnHub study sets in the app, or download LearnHub from the App Store.">
+  <meta name="description" content="Open shared LearnHub study sets in the app, or download LearnHub from TestFlight.">
   <meta name="robots" content="index,follow,max-image-preview:large">
   <meta name="theme-color" content="#2563eb">
 
@@ -38,7 +38,7 @@
 
     <div class="flex flex-col sm:flex-row gap-3">
       <a id="openAppButton" href="#" class="inline-flex justify-center items-center px-4 py-3 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 transition">Open in LearnHub</a>
-      <a id="downloadButton" href="https://apps.apple.com" class="inline-flex justify-center items-center px-4 py-3 rounded-lg border border-slate-300 font-semibold hover:bg-slate-50 transition">Download on App Store</a>
+      <a id="downloadButton" href="https://testflight.apple.com/join/DeEEC1jX" class="inline-flex justify-center items-center px-4 py-3 rounded-lg border border-slate-300 font-semibold hover:bg-slate-50 transition">Download on TestFlight</a>
     </div>
 
 
@@ -75,7 +75,7 @@
       setTimeout(function () {
         const elapsed = Date.now() - start;
         if (elapsed > 1300) {
-          status.textContent = 'If the app did not open, tap “Open in LearnHub” or install it from the App Store.';
+          status.textContent = 'If the app did not open, tap “Open in LearnHub” or install it from TestFlight.';
         }
       }, 1400);
     })();

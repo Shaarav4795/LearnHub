@@ -61,37 +61,54 @@ struct ShareStudySetView: View {
 
     private var mainView: some View {
         ScrollView {
-            VStack(spacing: 24) {
-                ZStack {
-                    Circle()
-                        .fill(Color.accentColor.opacity(0.12))
-                        .frame(width: 80, height: 80)
-                    
-                    Image(systemName: studySet.icon.systemName)
-                        .font(.system(size: 32, weight: .bold))
-                        .foregroundStyle(Color.accentColor)
-                }
-                .padding(.top, 24)
+            VStack(spacing: 32) {
+                // Header Profile Card
+                VStack(spacing: 16) {
+                    ZStack {
+                        Circle()
+                            .fill(
+                                LinearGradient(colors: [Color.accentColor.opacity(0.8), Color.accentColor], startPoint: .topLeading, endPoint: .bottomTrailing)
+                            )
+                            .frame(width: 90, height: 90)
+                            .shadow(color: Color.accentColor.opacity(0.3), radius: 10, y: 5)
+                        
+                        Image(systemName: studySet.icon.systemName)
+                            .font(.system(size: 40, weight: .bold))
+                            .foregroundStyle(.white)
+                    }
+                    .padding(.top, 32)
 
-                VStack(spacing: 8) {
-                    Text(studySet.title.isEmpty ? "Untitled Study Set" : studySet.title)
-                        .font(.title2.bold())
-                        .multilineTextAlignment(.center)
-                    
-                    Text("by \(authorName)")
-                        .font(.subheadline)
+                    VStack(spacing: 6) {
+                        Text(studySet.title.isEmpty ? "Untitled Study Set" : studySet.title)
+                            .font(.title.weight(.bold))
+                            .multilineTextAlignment(.center)
+                        
+                        Text("Created by \(authorName)")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                // Features
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("WHAT HAPPENS NEXT")
+                        .font(.caption.bold())
                         .foregroundStyle(.secondary)
+                        .padding(.horizontal, 4)
+
+                    VStack(spacing: 0) {
+                        infoRow(title: "Public Visibility", description: "Your study set will be featured on Explore for everyone.", icon: "globe", color: .blue)
+                        Divider().padding(.leading, 56)
+                        infoRow(title: "AI Moderation & Summary", description: "LearnHub AI ensures content safety and auto-generates a neat summary.", icon: "sparkles", color: .purple)
+                        Divider().padding(.leading, 56)
+                        infoRow(title: "Help Others Learn", description: "Join the community effort by sharing your knowledge.", icon: "person.2.fill", color: .green)
+                    }
+                    .background(Color(uiColor: .secondarySystemGroupedBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 }
                 .padding(.horizontal)
 
-                VStack(spacing: 12) {
-                    infoRow(title: "Public Visibility", description: "Visible to everyone on Explore.", icon: "globe")
-                    infoRow(title: "AI Moderation", description: "Our AI checks content and creates a short summary.", icon: "wand.and.stars")
-                    infoRow(title: "Community Growth", description: "Help others learn from your study material.", icon: "person.2.fill")
-                }
-                .padding(.horizontal)
-
-                Spacer(minLength: 40)
+                Spacer(minLength: 20)
 
                 Button {
                     HapticsManager.shared.playTap()
@@ -105,6 +122,7 @@ struct ShareStudySetView: View {
                         Text("Share to Explore")
                             .fontWeight(.bold)
                     }
+                    .font(.headline)
                     .frame(maxWidth: .infinity)
                     .padding()
                     .background(Color.accentColor)
@@ -116,27 +134,31 @@ struct ShareStudySetView: View {
                 .padding(.bottom, 24)
             }
         }
+        .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
     }
 
-    private func infoRow(title: String, description: String, icon: String) -> some View {
+    private func infoRow(title: String, description: String, icon: String, color: Color) -> some View {
         HStack(alignment: .top, spacing: 16) {
-            Image(systemName: icon)
-                .font(.headline)
-                .foregroundStyle(Color.accentColor)
-                .frame(width: 24)
+            ZStack {
+                Circle()
+                    .fill(color.opacity(0.15))
+                    .frame(width: 40, height: 40)
+                Image(systemName: icon)
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(color)
+            }
             
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
                     .font(.subheadline.bold())
                 Text(description)
-                    .font(.caption)
+                    .font(.footnote)
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Spacer()
         }
         .padding()
-        .background(Color.accentColor.opacity(0.06))
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     private var publishingView: some View {
@@ -159,57 +181,66 @@ struct ShareStudySetView: View {
 
                 if let shortCode = successShortCode,
                    let shareURL = successShareURL {
-                    VStack(spacing: 10) {
-                        Text("Share Link")
+                    VStack(spacing: 16) {
+                        Text("SHARE LINK")
                             .font(.caption.bold())
-                            .foregroundStyle(Color.accentColor)
+                            .foregroundStyle(.secondary)
 
-                        Text("learnhub.shaarav.xyz/share/\(shortCode)")
-                            .font(.footnote.monospaced())
+                        Text(shareURL.absoluteString.replacingOccurrences(of: "https://", with: ""))
+                            .font(.callout.monospaced())
                             .foregroundStyle(.primary)
                             .multilineTextAlignment(.center)
-                            .padding(.horizontal, 6)
+                            .padding()
+                            .frame(maxWidth: .infinity)
+                            .background(Color(uiColor: .systemBackground))
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.secondary.opacity(0.2), lineWidth: 1))
 
-                        HStack(spacing: 10) {
+                        HStack(spacing: 12) {
                             ShareLink(
                                 item: shareURL,
                                 subject: Text("LearnHub study set"),
                                 message: Text("Check out this LearnHub study set: \(shareURL.absoluteString)\n\nIf it opens in Safari, tap Open in LearnHub, then Save to My Sets.")
                             ) {
-                                Label("Share Link", systemImage: "square.and.arrow.up")
+                                Label("Share", systemImage: "square.and.arrow.up")
                                     .font(.subheadline.weight(.semibold))
+                                    .frame(maxWidth: .infinity)
                             }
                             .buttonStyle(.borderedProminent)
+                            .controlSize(.large)
+                            .tint(Color.accentColor)
 
                             Button {
                                 UIPasteboard.general.string = shareURL.absoluteString
                             } label: {
                                 Label("Copy", systemImage: "doc.on.doc")
                                     .font(.subheadline.weight(.semibold))
+                                    .frame(maxWidth: .infinity)
                             }
                             .buttonStyle(.bordered)
+                            .controlSize(.large)
                         }
                     }
                     .padding()
-                    .background(Color.accentColor.opacity(0.05))
-                    .cornerRadius(12)
+                    .background(Color(uiColor: .secondarySystemGroupedBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                     .padding(.horizontal)
-
                 }
                 
                 if !generatedDescription.isEmpty {
-                    VStack(spacing: 8) {
-                        Text("AI Summary")
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("AI SUMMARY")
                             .font(.caption.bold())
-                            .foregroundStyle(Color.accentColor)
+                            .foregroundStyle(.secondary)
                         Text(generatedDescription)
                             .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.primary)
                             .italic()
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .padding()
-                    .background(Color.accentColor.opacity(0.05))
-                    .cornerRadius(12)
+                    .background(Color(uiColor: .secondarySystemGroupedBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                     .padding(.horizontal)
                 }
             } else if let error = publishError {
@@ -233,19 +264,25 @@ struct ShareStudySetView: View {
                     Task { await publish() }
                 }
                 .buttonStyle(.bordered)
+                .controlSize(.large)
+                .padding(.top, 8)
             } else {
-                ProgressView()
-                    .scaleEffect(1.5)
-                
-                Text(publishStatusText)
-                    .font(.headline)
-                    .foregroundStyle(.secondary)
-                    .transition(.opacity)
+                VStack(spacing: 24) {
+                    ProgressView()
+                        .scaleEffect(1.5)
+                        .tint(Color.accentColor)
+                    
+                    Text(publishStatusText)
+                        .font(.headline)
+                        .foregroundStyle(.secondary)
+                        .transition(.opacity)
+                }
             }
             
             Spacer()
         }
         .padding()
+        .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
     }
 
     private func publish() async {

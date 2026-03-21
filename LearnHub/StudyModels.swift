@@ -77,12 +77,12 @@ struct QuickPrompt: Identifiable, Sendable {
 
 @Model
 final class StudyFolder {
-    var id: UUID
-    var name: String
-    var dateCreated: Date
+    var id: UUID = UUID()
+    var name: String = ""
+    var dateCreated: Date = Date()
     var iconId: String = "folder"
     
-    @Relationship(deleteRule: .nullify, inverse: \StudySet.folder) var studySets: [StudySet] = []
+    @Relationship(deleteRule: .nullify, inverse: \StudySet.folder) var studySets: [StudySet]?
     
     init(name: String, dateCreated: Date = Date(), iconId: String = "folder") {
         self.id = UUID()
@@ -94,19 +94,19 @@ final class StudyFolder {
 
 @Model
 final class StudySet {
-    var id: UUID
-    var title: String
-    var originalText: String
-    var dateCreated: Date
+    var id: UUID = UUID()
+    var title: String = ""
+    var originalText: String = ""
+    var dateCreated: Date = Date()
     var summary: String?
     var mode: String = "content"  // "content" or "topic" - default to content for migration
     var iconId: String = "book"   // Default icon for migration
     var sharedSnapshotId: String?
     var importedFromSharedId: String?
     
-    @Relationship(deleteRule: .cascade) var flashcards: [Flashcard] = []
-    @Relationship(deleteRule: .cascade) var questions: [Question] = []
-    @Relationship(deleteRule: .cascade) var chatHistory: [ChatMessage] = []
+    @Relationship(deleteRule: .cascade) var flashcards: [Flashcard]?
+    @Relationship(deleteRule: .cascade) var questions: [Question]?
+    @Relationship(deleteRule: .cascade) var chatHistory: [ChatMessage]?
     var folder: StudyFolder?
     
     init(title: String, originalText: String, summary: String? = nil, dateCreated: Date = Date(), mode: StudySetMode = .content, iconId: String = "book") {
@@ -131,16 +131,16 @@ final class StudySet {
     
     /// Returns sorted chat history by timestamp
     var sortedChatHistory: [ChatMessage] {
-        chatHistory.sorted { $0.timestamp < $1.timestamp }
+        (chatHistory ?? []).sorted { $0.timestamp < $1.timestamp }
     }
 }
 
 @Model
 final class Flashcard {
-    var id: UUID
-    var front: String
-    var back: String
-    var isMastered: Bool
+    var id: UUID = UUID()
+    var front: String = ""
+    var back: String = ""
+    var isMastered: Bool = false
     var reviewDueDate: Date?
     var reviewIntervalDays: Double = 0
     var reviewStability: Double = 0
@@ -188,9 +188,9 @@ final class Flashcard {
 
 @Model
 final class Question {
-    var id: UUID
-    var prompt: String
-    var answer: String
+    var id: UUID = UUID()
+    var prompt: String = ""
+    var answer: String = ""
     var options: [String]? // For multiple choice if needed later
     var explanation: String?
     var reviewDueDate: Date?
@@ -244,10 +244,10 @@ final class Question {
 
 @Model
 final class ChatMessage {
-    var id: UUID
-    var text: String
-    var isUser: Bool
-    var timestamp: Date
+    var id: UUID = UUID()
+    var text: String = ""
+    var isUser: Bool = false
+    var timestamp: Date = Date()
     
     var studySet: StudySet?
     

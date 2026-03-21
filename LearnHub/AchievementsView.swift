@@ -68,7 +68,7 @@ struct AchievementsView: View {
     private var achievementSummary: some View {
         HStack(spacing: 20) {
             VStack(spacing: 8) {
-                Text("\(profile.achievements.count)")
+                Text("\(profile.achievements?.count ?? 0)")
                     .font(.largeTitle.bold())
                     .foregroundColor(.primary)
                 
@@ -82,7 +82,7 @@ struct AchievementsView: View {
                 .frame(height: 50)
             
             VStack(spacing: 8) {
-                Text("\(AchievementType.allCases.count - profile.achievements.count)")
+                Text("\(AchievementType.allCases.count - (profile.achievements?.count ?? 0))")
                     .font(.largeTitle.bold())
                     .foregroundColor(.secondary)
                 
@@ -96,7 +96,7 @@ struct AchievementsView: View {
                 .frame(height: 50)
             
             VStack(spacing: 8) {
-                let percentage = Double(profile.achievements.count) / Double(AchievementType.allCases.count) * 100
+                let percentage = Double(profile.achievements?.count ?? 0) / Double(AchievementType.allCases.count) * 100
                 Text("\(Int(percentage))%")
                     .font(.largeTitle.bold())
                     .foregroundColor(.blue)
@@ -151,7 +151,7 @@ struct AchievementsView: View {
     // MARK: - Helper functions
     
     private func isUnlocked(_ type: AchievementType) -> Bool {
-        profile.achievements.contains(where: { $0.type == type.rawValue })
+        (profile.achievements ?? []).contains(where: { $0.type == type.rawValue })
     }
     
     private func getProgress(for type: AchievementType) -> Double {

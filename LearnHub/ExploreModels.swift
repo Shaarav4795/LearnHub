@@ -71,7 +71,7 @@ struct SharedStudySet: Codable, Identifiable, Hashable, Sendable {
             publisherId: nil,
             contentFingerprint: nil,
             createdAt: Date(),
-            questions: studySet.questions.map {
+            questions: (studySet.questions ?? []).map {
                 SharedStudyQuestion(
                     id: UUID().uuidString,
                     prompt: $0.prompt,
@@ -80,7 +80,7 @@ struct SharedStudySet: Codable, Identifiable, Hashable, Sendable {
                     options: $0.options
                 )
             },
-            flashcards: studySet.flashcards.map {
+            flashcards: (studySet.flashcards ?? []).map {
                 SharedStudyFlashcard(
                     id: UUID().uuidString,
                     front: $0.front,
@@ -89,8 +89,8 @@ struct SharedStudySet: Codable, Identifiable, Hashable, Sendable {
             },
             tags: tags,
             saveCount: 0,
-            questionsCount: studySet.questions.count,
-            flashcardsCount: studySet.flashcards.count
+            questionsCount: studySet.questions?.count ?? 0,
+            flashcardsCount: studySet.flashcards?.count ?? 0
         )
     }
 }

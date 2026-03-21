@@ -23,7 +23,7 @@ struct QuizView: View {
 
     init(studySet: StudySet) {
         self.studySet = studySet
-        _questions = State(initialValue: studySet.questions)
+        _questions = State(initialValue: studySet.questions ?? [])
     }
     
     private var profile: UserProfile {

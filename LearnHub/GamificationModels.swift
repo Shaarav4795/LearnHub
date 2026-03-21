@@ -256,27 +256,27 @@ enum AchievementType: String, Codable, CaseIterable {
 
 @Model
 final class UserProfile {
-    var id: UUID
-    var username: String
-    var totalXP: Int
-    var coins: Int
-    var currentStreak: Int
-    var longestStreak: Int
+    var id: UUID = UUID()
+    var username: String = ""
+    var totalXP: Int = 0
+    var coins: Int = 0
+    var currentStreak: Int = 0
+    var longestStreak: Int = 0
     var lastStudyDate: Date?
     var lastDailyMixDate: Date?
-    var totalQuestionsCorrect: Int
-    var totalQuizzesTaken: Int
-    var perfectQuizzes: Int
-    var totalFlashcardsStudied: Int
-    var totalStudySets: Int
-    var selectedAvatarId: String
-    var selectedThemeId: String
-    var streakFreezeTokens: Int
-    var createdAt: Date
+    var totalQuestionsCorrect: Int = 0
+    var totalQuizzesTaken: Int = 0
+    var perfectQuizzes: Int = 0
+    var totalFlashcardsStudied: Int = 0
+    var totalStudySets: Int = 0
+    var selectedAvatarId: String = ""
+    var selectedThemeId: String = ""
+    var streakFreezeTokens: Int = 0
+    var createdAt: Date = Date()
     
-    @Relationship(deleteRule: .cascade) var achievements: [Achievement] = []
-    @Relationship(deleteRule: .cascade) var unlockedItems: [UnlockedItem] = []
-    @Relationship(deleteRule: .cascade) var activeXPBoosters: [ActiveXPBooster] = []
+    @Relationship(deleteRule: .cascade) var achievements: [Achievement]?
+    @Relationship(deleteRule: .cascade) var unlockedItems: [UnlockedItem]?
+    @Relationship(deleteRule: .cascade) var activeXPBoosters: [ActiveXPBooster]?
     
     init(username: String = "Student") {
         self.id = UUID()
@@ -351,10 +351,10 @@ final class UserProfile {
 
 @Model
 final class ActiveXPBooster {
-    var id: UUID
-    var percentBonus: Int
-    var startsAt: Date
-    var endsAt: Date
+    var id: UUID = UUID()
+    var percentBonus: Int = 0
+    var startsAt: Date = Date()
+    var endsAt: Date = Date()
 
     var userProfile: UserProfile?
 
@@ -368,10 +368,10 @@ final class ActiveXPBooster {
 
 @Model
 final class Achievement {
-    var id: UUID
-    var type: String // `AchievementType.rawValue`
-    var unlockedAt: Date
-    var claimed: Bool
+    var id: UUID = UUID()
+    var type: String = "" // `AchievementType.rawValue`
+    var unlockedAt: Date = Date()
+    var claimed: Bool = false
     
     var userProfile: UserProfile?
     
@@ -389,10 +389,10 @@ final class Achievement {
 
 @Model
 final class UnlockedItem {
-    var id: UUID
-    var itemId: String
-    var itemType: String // "avatar" or "theme"
-    var unlockedAt: Date
+    var id: UUID = UUID()
+    var itemId: String = ""
+    var itemType: String = "" // "avatar" or "theme"
+    var unlockedAt: Date = Date()
     
     var userProfile: UserProfile?
     

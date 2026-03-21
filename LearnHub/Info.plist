@@ -2,10 +2,17 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>SUPABASE_ANON_KEY</key>
-	<string>sb_publishable_x3TzFDNr3ix9Zc7xm6O24w_39xt7G-7</string>
-    <key>SUPABASE_URL</key>
-	<string>https://bivpmdrtvkhaohblqdxg.supabase.co</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.shaarav4795.LearnHub.hf</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>learnhub</string>
+			</array>
+		</dict>
+	</array>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>
