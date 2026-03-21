@@ -432,8 +432,7 @@ struct ShopView: View {
             }
         }
         .padding()
-        .background(Color(uiColor: .secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .glassCard(cornerRadius: 16)
         .overlay(
             RoundedRectangle(cornerRadius: 16)
                 .stroke(Color.cyan.opacity(0.2), lineWidth: 1)
@@ -526,8 +525,7 @@ struct ShopView: View {
             }
         }
         .padding()
-        .background(Color(uiColor: .secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .glassCard(cornerRadius: 16)
         .overlay(
             RoundedRectangle(cornerRadius: 16)
                 .stroke(Color.purple.opacity(0.2), lineWidth: 1)
@@ -564,8 +562,7 @@ struct ShopView: View {
             }
         }
         .padding()
-        .background(Color(uiColor: .secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .glassCard(cornerRadius: 16)
     }
 }
 
@@ -693,8 +690,7 @@ struct AvatarShopCard: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 12)
         .padding(.horizontal, 8)
-        .background(Color(uiColor: .secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .glassCard(cornerRadius: 16)
         .overlay(
             RoundedRectangle(cornerRadius: 16)
                 .stroke(isSelected ? Color.green : Color.clear, lineWidth: 2)
@@ -777,8 +773,7 @@ struct ThemeShopCard: View {
         }
         .padding()
         .frame(maxWidth: .infinity)
-        .background(Color(uiColor: .secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .glassCard(cornerRadius: 16)
         .overlay(
             RoundedRectangle(cornerRadius: 16)
                 .stroke(isSelected ? Color.green : Color.clear, lineWidth: 2)
@@ -970,7 +965,7 @@ private struct ShopSkeletonView: View {
         LazyVGrid(columns: columns, spacing: 12) {
             ForEach(0..<6, id: \.self) { _ in
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(Color(.secondarySystemGroupedBackground))
+                    .fill(Color(white: 0.5).opacity(0.1))
                     .frame(height: tab == .consumables ? 136 : 184)
             }
         }

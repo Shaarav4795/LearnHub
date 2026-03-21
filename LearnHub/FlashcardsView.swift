@@ -143,6 +143,7 @@ struct FlashcardsView: View {
                 .padding()
             }
         }
+        .background(OLEDBackground())
         .navigationTitle("Flashcards")
         .fullScreenCover(isPresented: $showEditFlashcards) {
             NavigationStack {
@@ -203,8 +204,7 @@ struct FlashcardsView: View {
                 .cornerRadius(12)
             }
             .padding()
-            .background(Color(uiColor: .secondarySystemGroupedBackground))
-            .cornerRadius(16)
+            .glassCard(cornerRadius: 24)
         }
         .padding()
     }
@@ -273,17 +273,23 @@ struct FlashcardView: View {
     
     @State private var isFlipped = false
     @Environment(\.colorScheme) private var colorScheme
-    
+    @State private var dragOffset: CGSize = .zero
+    @State private var dragRotation: Double = 0.0
+
     var body: some View {
         VStack(spacing: 16) {
             ZStack {
-                RoundedRectangle(cornerRadius: 20)
-                    .fill(Color(UIColor.systemBackground))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 20)
-                            .stroke(colorScheme == .dark ? Color.white.opacity(0.18) : Color.black.opacity(0.08), lineWidth: 1)
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .fill(colorScheme == .dark ? Color(white: 0.1).opacity(0.9) : Color.white.opacity(0.95))
+                    .background(
+                        RoundedRectangle(cornerRadius: 24, style: .continuous)
+                            .foregroundStyle(.ultraThinMaterial)
                     )
-                    .shadow(color: .black.opacity(colorScheme == .dark ? 0.18 : 0.08), radius: 5)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 24, style: .continuous)
+                            .stroke(colorScheme == .dark ? Color.white.opacity(0.12) : Color.black.opacity(0.05), lineWidth: 1)
+                    )
+                    .shadow(color: .black.opacity(colorScheme == .dark ? 0.0 : 0.08), radius: 12, y: 5)
                 
                 VStack {
                     if isFlipped {
@@ -298,11 +304,39 @@ struct FlashcardView: View {
                     }
                 }
             }
-            .frame(height: 260)
+            .frame(height: 320)
             .rotation3DEffect(.degrees(isFlipped ? 180 : 0), axis: (x: 0, y: 1, z: 0))
+            .rotation3DEffect(.degrees(dragRotation), axis: (x: dragOffset.height, y: -dragOffset.width, z: 0.0))
+            .scaleEffect(dragOffset == .zero ? 1.0 : 0.95)
+            .offset(x: dragOffset.width / 5, y: dragOffset.height / 5)
+            .gesture(
+                DragGesture()
+                    .onChanged { value in
+                        withAnimation(.interactiveSpring(response: 0.2, dampingFraction: 0.8)) {
+                            dragOffset = value.translation
+                            dragRotation = Double(max(min(value.translation.width / 10, 15), -15))
+                        }
+                    }
+                    .onEnded { value in
+                        if abs(value.translation.width) < 20 && abs(value.translation.height) < 20 {
+                            // Convert drag to tap if very small
+                            HapticsManager.shared.playTap()
+                            withAnimation(.spring(response: 0.45, dampingFraction: 0.7)) {
+                                isFlipped.toggle()
+                                if isFlipped && !isStudied {
+                                    onStudied?()
+                                }
+                            }
+                        }
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.6)) {
+                            dragOffset = .zero
+                            dragRotation = 0
+                        }
+                    }
+            )
             .onTapGesture {
                 HapticsManager.shared.playTap()
-                withAnimation(.spring()) {
+                withAnimation(.spring(response: 0.45, dampingFraction: 0.7)) {
                     isFlipped.toggle()
                     if isFlipped && !isStudied {
                         onStudied?()

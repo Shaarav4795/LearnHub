@@ -196,8 +196,9 @@ struct CategoryPill: View {
                 .padding(.vertical, 8)
                 .background(
                     Capsule()
-                        .fill(isSelected ? Color.accentColor : Color(uiColor: .secondarySystemGroupedBackground))
+                        .fill(isSelected ? Color.accentColor : Color.clear)
                 )
+                .glassCard(cornerRadius: 100, strokeOpacity: isSelected ? 0.3 : 0.1)
         }
         .buttonStyle(.plain)
         .buttonStyle(PressScaleButtonStyle())

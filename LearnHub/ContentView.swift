@@ -287,12 +287,13 @@ struct ContentView: View {
         NavigationStack(path: $navigationPath) {
             let isCreationDialogVisible = showStudySetSourceDialog
             ZStack {
-                Color(uiColor: .systemGroupedBackground)
-                    .ignoresSafeArea()
+                OLEDBackground()
                 
                 if selectedHomeSubtab == .explore {
                     ExploreView()
-                } else if studySets.isEmpty && studyFolders.isEmpty && searchText.isEmpty {
+                } else {
+                    Group {
+                        if studySets.isEmpty && studyFolders.isEmpty && searchText.isEmpty {
                     VStack(spacing: 16) {
                         // Daily Mix launcher
                         dailyMixCard
@@ -511,9 +512,7 @@ struct ContentView: View {
                                             }
                                         }
                                         .padding()
-                                        .background(Color(uiColor: .secondarySystemGroupedBackground))
-                                        .cornerRadius(16)
-                                        .shadow(color: .black.opacity(0.05), radius: 5, x: 0, y: 2)
+                                        .glassCard(cornerRadius: 16, strokeOpacity: 0.15)
                                     }
                                     .listRowSeparator(.hidden)
                                     .listRowBackground(Color.clear)
@@ -600,11 +599,16 @@ struct ContentView: View {
                             }
                         }
                     }
+                    .scrollContentBackground(.hidden)
                     .listStyle(.plain)
                     .listSectionSpacing(0)
                     .transaction { t in t.animation = nil }
                     .animation(nil, value: searchText)
-                }
+                } // end list
+                    } // end group
+                    .searchable(text: $searchText, isPresented: $isSearching, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search study sets")
+                    .animation(.linear(duration: 0.04), value: isSearching)
+                } // end else
             }
             .safeAreaInset(edge: .top) {
                 homeSubtabPicker
@@ -656,8 +660,6 @@ struct ContentView: View {
                     .ignoresSafeArea()
                 }
             }
-            .searchable(text: $searchText, isPresented: $isSearching, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search study sets")
-            .animation(.linear(duration: 0.04), value: isSearching)
             .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(for: StudySet.self) { set in
                 StudySetDetailView(studySet: set)
@@ -681,17 +683,10 @@ struct ContentView: View {
             }
             .toolbar {
                 ToolbarItem(placement: .principal) {
-                    HStack(spacing: 6) {
-                        Text("LearnHub")
-                            .font(.title2.bold())
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.85)
-
-                        Image(systemName: "icloud")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .opacity(0.6)
-                    }
+                    Text("LearnHub")
+                        .font(.title2.bold())
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
                 }
 
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -731,6 +726,16 @@ struct ContentView: View {
                     .buttonStyle(PressScaleButtonStyle())
                     .guideTarget(.homeCreate)
                 }
+            }
+            .overlay(alignment: .topLeading) {
+                Image(systemName: "icloud")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .opacity(0.6)
+                    .padding(.top, 10)
+                    .padding(.leading, 16)
+                    .accessibilityLabel("Syncing with iCloud")
+                    .allowsHitTesting(false)
             }
             .onOpenURL { url in
                 handleDeepLink(url)
@@ -788,9 +793,7 @@ struct ContentView: View {
                                     TextField("Enter new title", text: $renameTitle)
                                         .font(.body)
                                         .padding()
-                                        .background(Color(uiColor: .secondarySystemGroupedBackground))
-                                        .cornerRadius(12)
-                                        .shadow(color: .black.opacity(0.05), radius: 3, x: 0, y: 1)
+                                        .glassCard(cornerRadius: 12)
                                 }
                                 .padding(.horizontal)
                                 
@@ -944,13 +947,10 @@ struct ContentView: View {
                             .foregroundColor(.secondary)
                     }
                     .padding()
-                    .background(
-                        RoundedRectangle(cornerRadius: 16)
-                            .fill(Color(uiColor: .secondarySystemGroupedBackground))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 16)
-                                    .stroke(themeManager.primaryColor.opacity(0.3), lineWidth: 1.5)
-                            )
+                    .glassCard(cornerRadius: 16, strokeOpacity: 0.15)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .stroke(themeManager.primaryColor.opacity(0.3), lineWidth: 1.5)
                     )
                     .shadow(color: themeManager.primaryColor.opacity(0.12), radius: 8, x: 0, y: 4)
                 }
@@ -1032,8 +1032,7 @@ struct ContentView: View {
             }
         }
         .padding()
-        .background(Color(uiColor: .secondarySystemGroupedBackground))
-        .cornerRadius(16)
+        .glassCard(cornerRadius: 16, strokeOpacity: 0.15)
         .padding(.horizontal)
         .padding(.top, 8)
         .transition(.opacity.combined(with: .move(edge: .top)))
@@ -1114,15 +1113,7 @@ private struct FolderCard: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .padding(10)
-            .background(
-                RoundedRectangle(cornerRadius: 18)
-                    .fill(themeManager.primaryColor.opacity(0.08))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 18)
-                            .stroke(themeManager.primaryColor.opacity(0.2), lineWidth: 1.1)
-                    )
-            )
-            .shadow(color: themeManager.primaryColor.opacity(0.12), radius: 6, x: 0, y: 3)
+            .glassCard(cornerRadius: 18)
         }
         .aspectRatio(1.3, contentMode: .fit)
     }
@@ -1194,8 +1185,7 @@ private struct StudySetSourcePopup: View {
                     }
                     .padding()
                     .frame(maxWidth: .infinity)
-                    .background(Color(.secondarySystemGroupedBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .glassCard(cornerRadius: 12)
                 }
                 .buttonStyle(.plain)
                 .buttonStyle(PressScaleButtonStyle())
@@ -1203,13 +1193,7 @@ private struct StudySetSourcePopup: View {
         }
         .padding(20)
         .frame(maxWidth: 420)
-        .background(Color(uiColor: .secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .stroke(Color.accentColor.opacity(0.22), lineWidth: 1)
-        )
-        .shadow(color: Color.black.opacity(0.1), radius: 14, y: 6)
+        .glassCard(cornerRadius: 22)
     }
 }
 

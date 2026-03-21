@@ -54,6 +54,20 @@ enum ReminderSensitivity: String, CaseIterable, Identifiable {
     }
 }
 
+enum InformationDensity: String, CaseIterable, Identifiable {
+    case compact
+    case comfortable
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .compact: return "Compact"
+        case .comfortable: return "Comfortable"
+        }
+    }
+}
+
 enum ModelSettings {
     enum Keys {
         static let preference = "ai.modelPreference"
@@ -61,6 +75,7 @@ enum ModelSettings {
         static let groqModel = "ai.groq.model"
         static let smartRemindersEnabled = "notifications.smart.enabled"
         static let smartReminderSensitivity = "notifications.smart.sensitivity"
+        static let uiInformationDensity = "ui.informationDensity"
     }
 
     // Default Groq model is now the compound family (falls back to smaller / OSS models)
@@ -104,6 +119,19 @@ enum ModelSettings {
     static func setGroqModel(_ value: String) async {
         await MainActor.run {
             UserDefaults.standard.set(value, forKey: Keys.groqModel)
+        }
+    }
+
+    static func informationDensity() async -> InformationDensity {
+        await MainActor.run {
+            let raw = UserDefaults.standard.string(forKey: Keys.uiInformationDensity) ?? InformationDensity.comfortable.rawValue
+            return InformationDensity(rawValue: raw) ?? .comfortable
+        }
+    }
+    
+    static func setInformationDensity(_ value: InformationDensity) async {
+        await MainActor.run {
+            UserDefaults.standard.set(value.rawValue, forKey: Keys.uiInformationDensity)
         }
     }
 

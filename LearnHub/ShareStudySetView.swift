@@ -103,8 +103,7 @@ struct ShareStudySetView: View {
                         Divider().padding(.leading, 56)
                         infoRow(title: "Help Others Learn", description: "Join the community effort by sharing your knowledge.", icon: "person.2.fill", color: .green)
                     }
-                    .background(Color(uiColor: .secondarySystemGroupedBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .glassCard(cornerRadius: 16)
                 }
                 .padding(.horizontal)
 
@@ -134,7 +133,7 @@ struct ShareStudySetView: View {
                 .padding(.bottom, 24)
             }
         }
-        .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
+        .background(OLEDBackground().ignoresSafeArea())
     }
 
     private func infoRow(title: String, description: String, icon: String, color: Color) -> some View {
@@ -222,8 +221,7 @@ struct ShareStudySetView: View {
                         }
                     }
                     .padding()
-                    .background(Color(uiColor: .secondarySystemGroupedBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .glassCard(cornerRadius: 16)
                     .padding(.horizontal)
                 }
                 
@@ -239,8 +237,7 @@ struct ShareStudySetView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .padding()
-                    .background(Color(uiColor: .secondarySystemGroupedBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .glassCard(cornerRadius: 16)
                     .padding(.horizontal)
                 }
             } else if let error = publishError {
@@ -282,7 +279,8 @@ struct ShareStudySetView: View {
             Spacer()
         }
         .padding()
-        .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(OLEDBackground().ignoresSafeArea())
     }
 
     private func publish() async {

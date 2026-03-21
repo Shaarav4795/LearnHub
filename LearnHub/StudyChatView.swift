@@ -41,6 +41,7 @@ struct StudyChatView: View {
     var body: some View {
         let isOverlayPresented = showImageSourceDialog || showClearConfirmation
         ZStack {
+            OLEDBackground()
             VStack(spacing: 0) {
                 // Persistent header actions
                 HStack {
@@ -63,13 +64,7 @@ struct StudyChatView: View {
                         .font(.subheadline.weight(.semibold))
                         .padding(.horizontal, 14)
                         .padding(.vertical, 10)
-                        .background(Color(.secondarySystemGroupedBackground))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .stroke(Color.accentColor.opacity(0.4), lineWidth: 1)
-                        )
-                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
+                        .glassCard(cornerRadius: 14)
                     }
                     .disabled(sortedMessages.isEmpty)
                     .buttonStyle(PressScaleButtonStyle())
@@ -180,7 +175,7 @@ struct StudyChatView: View {
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
-                    .background(Color(.secondarySystemGroupedBackground))
+                    .glassCard(cornerRadius: 12)
                 }
                 
                 // Quick prompts
@@ -274,7 +269,7 @@ struct StudyChatView: View {
             }
         }
         .confettiCannon(counter: $tutorConfettiCounter)
-        .animation(.spring(response: 0.3, dampingFraction: 0.82), value: sortedMessages.count)
+        .animation(.spring(response: 0.35, dampingFraction: 0.65, blendDuration: 1), value: sortedMessages.count)
         .alert("Groq API Key Required", isPresented: $showApiKeyAlert) {
             Button("OK", role: .cancel) { }
         } message: {
@@ -635,7 +630,7 @@ private struct TutorLoadingScreenView: View {
             ForEach(0..<4, id: \.self) { index in
                 HStack {
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(Color(.secondarySystemGroupedBackground))
+                        .fill(Color(white: 0.5).opacity(0.1))
                         .frame(width: index.isMultiple(of: 2) ? 240 : 190, height: 56)
                     Spacer(minLength: 50)
                 }
@@ -693,12 +688,12 @@ private struct ChatBubbleView: View {
                         ? Color.accentColor
                         : Color(.secondarySystemGroupedBackground)
                 )
+                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .stroke(message.isUser ? Color.white.opacity(0.2) : Color.primary.opacity(0.08), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .stroke(message.isUser ? Color.white.opacity(0.15) : Color.primary.opacity(0.06), lineWidth: 1)
                 )
-                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .shadow(color: .black.opacity(message.isUser ? 0.16 : 0.06), radius: 6, y: 2)
+                .shadow(color: .black.opacity(message.isUser ? 0.16 : 0.04), radius: 8, y: 3)
                 .contextMenu {
                     if !message.isUser {
                         Button {

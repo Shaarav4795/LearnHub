@@ -19,7 +19,9 @@ struct ExploreView: View {
     }
 
     var body: some View {
-        Group {
+        ZStack {
+            OLEDBackground()
+            
             if isLoading && sets.isEmpty {
                 ProgressView("Loading Explore")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -43,7 +45,7 @@ struct ExploreView: View {
                 ContentUnavailableView.search(text: searchText)
             } else {
                 ScrollView {
-                    LazyVStack(spacing: 8) {
+                    VStack(spacing: 24) {
                         if let errorMessage {
                             Text(errorMessage)
                                 .font(.footnote)
@@ -52,22 +54,71 @@ struct ExploreView: View {
                                 .padding(.horizontal, 16)
                         }
 
-                        ForEach(filteredSets) { sharedSet in
-                            NavigationLink {
-                                ExploreStudySetPreviewView(sharedSet: sharedSet)
-                            } label: {
-                                ExploreStudySetRow(sharedSet: sharedSet)
+                        if !filteredSets.isEmpty {
+                            // Featured Carousel
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text("Featured")
+                                    .font(.title2.bold())
+                                    .padding(.horizontal, 16)
+                                
+                                ScrollView(.horizontal, showsIndicators: false) {
+                                    LazyHStack(spacing: 16) {
+                                        ForEach(filteredSets.prefix(5)) { sharedSet in
+                                            NavigationLink {
+                                                ExploreStudySetPreviewView(sharedSet: sharedSet)
+                                            } label: {
+                                                ExploreStudySetCard(sharedSet: sharedSet)
+                                            }
+                                            .buttonStyle(PressScaleButtonStyle())
+                                        }
+                                    }
+                                    .padding(.horizontal, 16)
+                                    .padding(.bottom, 8)
+                                }
                             }
-                            .buttonStyle(.plain)
+                            
+                            
+                            // Discover Grid
+                            let discoverItems = Array(filteredSets.dropFirst(5))
+                            if !discoverItems.isEmpty {
+                                VStack(alignment: .leading, spacing: 12) {
+                                    Text("Discover")
+                                        .font(.title3.bold())
+                                        .padding(.horizontal, 16)
+                                    
+                                    let columns = 2
+                                    
+                                    HStack(alignment: .top, spacing: 16) {
+                                        ForEach(0..<columns, id: \.self) { colIndex in
+                                            let columnItems = discoverItems.enumerated().compactMap { index, item in
+                                                index % columns == colIndex ? item : nil
+                                            }
+                                            
+                                            VStack(spacing: 16) {
+                                                ForEach(columnItems) { sharedSet in
+                                                    NavigationLink {
+                                                        ExploreStudySetPreviewView(sharedSet: sharedSet)
+                                                    } label: {
+                                                        ExploreStudySetGridItem(sharedSet: sharedSet)
+                                                    }
+                                                    .buttonStyle(PressScaleButtonStyle())
+                                                }
+                                            }
+                                        }
+                                    }
+                                    .padding(.horizontal, 16)
+                                }
+                            }
                         }
                     }
-                    .padding(.vertical, 8)
+                    .padding(.vertical, 16)
                 }
                 .refreshable {
                     await load(force: true)
                 }
             }
         }
+        .background(OLEDBackground())
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search shared sets")
         .task {
             await load(force: false)
@@ -91,19 +142,22 @@ struct ExploreView: View {
     }
 }
 
-private struct ExploreStudySetRow: View {
+private struct ExploreStudySetCard: View {
     let sharedSet: SharedStudySet
+    @Environment(\.colorScheme) var colorScheme
 
     var body: some View {
-        HStack(spacing: 16) {
+        VStack(alignment: .leading, spacing: 12) {
             ZStack {
-                Circle()
-                    .fill(Color.accentColor.opacity(0.1))
-                    .frame(width: 48, height: 48)
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(Color.accentColor.opacity(0.15))
+                    .frame(height: 120)
                 
                 Image(systemName: StudySetIcon.icon(for: sharedSet.iconId)?.systemName ?? "book.closed.fill")
-                    .font(.system(size: 20, weight: .semibold))
+                    .font(.system(size: 44, weight: .medium))
                     .foregroundStyle(Color.accentColor)
+                    // Glassmorphic shadow/glow
+                    .shadow(color: Color.accentColor.opacity(0.3), radius: 10, y: 5)
             }
 
             VStack(alignment: .leading, spacing: 4) {
@@ -111,36 +165,63 @@ private struct ExploreStudySetRow: View {
                     .lineLimit(1)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
-                HStack(spacing: 10) {
-                    if let author = sharedSet.authorName, !author.isEmpty {
-                        Label(author, systemImage: "person.circle")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-
-                    Spacer(minLength: 8)
-
-                    Label("\(sharedSet.questionsCount ?? sharedSet.questions?.count ?? 0)", systemImage: "questionmark.circle")
+                if let author = sharedSet.authorName, !author.isEmpty {
+                    Label(author, systemImage: "person.circle")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+
+                HStack(spacing: 12) {
+                    Label("\(sharedSet.questionsCount ?? sharedSet.questions?.count ?? 0)", systemImage: "questionmark.circle")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
 
                     Label("\(sharedSet.flashcardsCount ?? sharedSet.flashcards?.count ?? 0)", systemImage: "rectangle.on.rectangle")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
                 }
-                .frame(maxWidth: .infinity)
+                .padding(.top, 4)
             }
+        }
+        .padding(16)
+        .frame(width: 240)
+        .glassCard(cornerRadius: 24)
+    }
+}
 
-            Image(systemName: "chevron.right")
-                .font(.caption.weight(.bold))
-                .foregroundStyle(.tertiary)
+private struct ExploreStudySetGridItem: View {
+    let sharedSet: SharedStudySet
+    @Environment(\.colorScheme) var colorScheme
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(Color.accentColor.opacity(0.1))
+                    .frame(height: 80)
+                
+                Image(systemName: StudySetIcon.icon(for: sharedSet.iconId)?.systemName ?? "book.closed.fill")
+                    .font(.system(size: 28))
+                    .foregroundStyle(Color.accentColor)
+            }
+            
+            VStack(alignment: .leading, spacing: 2) {
+                MathTextView(sharedSet.title, fontSize: 16, forceBold: true)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                
+                if let author = sharedSet.authorName, !author.isEmpty {
+                    Text(author)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
         }
         .padding(12)
-        .background(Color(uiColor: .secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .padding(.horizontal, 16)
-        .padding(.vertical, 4)
+        .glassCard(cornerRadius: 18)
     }
 }
 

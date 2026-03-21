@@ -6,6 +6,7 @@ struct ModelSettingsView: View {
     @AppStorage(ModelSettings.Keys.groqApiKey) private var groqApiKey: String = ""
     @AppStorage(ModelSettings.Keys.smartRemindersEnabled) private var smartRemindersEnabled: Bool = true
     @AppStorage(ModelSettings.Keys.smartReminderSensitivity) private var reminderSensitivityRaw: String = ReminderSensitivity.medium.rawValue
+    @AppStorage(ModelSettings.Keys.uiInformationDensity) private var informationDensityRaw: String = InformationDensity.comfortable.rawValue
     @State private var showHelp = false
 
     private var preferenceBinding: Binding<AIModelPreference> {
@@ -25,6 +26,14 @@ struct ModelSettingsView: View {
             ReminderSensitivity(rawValue: reminderSensitivityRaw) ?? .medium
         } set: { newValue in
             reminderSensitivityRaw = newValue.rawValue
+        }
+    }
+
+    private var densityBinding: Binding<InformationDensity> {
+        Binding {
+            InformationDensity(rawValue: informationDensityRaw) ?? .comfortable
+        } set: { newValue in
+            informationDensityRaw = newValue.rawValue
         }
     }
 
@@ -128,8 +137,21 @@ struct ModelSettingsView: View {
                         .foregroundColor(.secondary)
                 }
             }
+            
+            Section("UI Preferences") {
+                Picker("Information Density", selection: densityBinding) {
+                    ForEach(InformationDensity.allCases) { option in
+                        Text(option.displayName).tag(option)
+                    }
+                }
+                .onChange(of: densityBinding.wrappedValue) { _, _ in
+                    HapticsManager.shared.playTap()
+                }
+            }
         }
-        .navigationTitle("Model Settings")
+        .scrollContentBackground(.hidden)
+        .background(OLEDBackground())
+        .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showHelp) {
             GroqHelpView()
@@ -144,8 +166,7 @@ struct GroqHelpView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color(uiColor: .systemGroupedBackground)
-                    .ignoresSafeArea()
+                OLEDBackground()
                 
                 ScrollView {
                     VStack(spacing: 24) {

@@ -18,6 +18,5 @@ Pods/
 
 # Copilot Instructions
 .github/copilot-instructions.md
-
 .agents/
 skills-lock.json

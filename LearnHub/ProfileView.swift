@@ -48,7 +48,7 @@ struct ProfileView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(uiColor: .systemGroupedBackground))
+        .background(OLEDBackground())
         .navigationTitle("Profile")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -288,8 +288,7 @@ struct ProfileView: View {
     private var editUsernameSheet: some View {
         NavigationStack {
             ZStack {
-                Color(uiColor: .systemGroupedBackground)
-                    .ignoresSafeArea()
+                OLEDBackground()
                 
                 VStack(spacing: 24) {
                     // Sheet header with icon.
@@ -318,9 +317,7 @@ struct ProfileView: View {
                         TextField("Enter username", text: $newUsername)
                             .font(.body)
                             .padding()
-                            .background(Color(uiColor: .secondarySystemGroupedBackground))
-                            .cornerRadius(12)
-                            .shadow(color: .black.opacity(0.05), radius: 3, x: 0, y: 1)
+                            .glassCard(cornerRadius: 12)
                     }
                     .padding(.horizontal)
                     
