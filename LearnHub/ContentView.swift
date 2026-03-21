@@ -683,10 +683,17 @@ struct ContentView: View {
             }
             .toolbar {
                 ToolbarItem(placement: .principal) {
-                    Text("LearnHub")
-                        .font(.title2.bold())
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.85)
+                    HStack(spacing: 6) {
+                        Text("LearnHub")
+                            .font(.title2.bold())
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.85)
+
+                        Image(systemName: "icloud")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .opacity(0.6)
+                    }
                 }
 
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -726,16 +733,6 @@ struct ContentView: View {
                     .buttonStyle(PressScaleButtonStyle())
                     .guideTarget(.homeCreate)
                 }
-            }
-            .overlay(alignment: .topLeading) {
-                Image(systemName: "icloud")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .opacity(0.6)
-                    .padding(.top, 10)
-                    .padding(.leading, 16)
-                    .accessibilityLabel("Syncing with iCloud")
-                    .allowsHitTesting(false)
             }
             .onOpenURL { url in
                 handleDeepLink(url)
