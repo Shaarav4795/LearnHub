@@ -8,7 +8,7 @@
     </array>
 	<key>com.apple.security.application-groups</key>
 	<array>
-		<string>group.com.shaarav4795.LearnHub</string>
+		<string>group.com.shaarav4795.LearnHub.hf</string>
 	</array>
 </dict>
 </plist>

@@ -107,7 +107,7 @@ final class GamificationManager: ObservableObject {
         
         // Load existing widget data so we can preserve non-study-set fields.
         var widgetData: WidgetData
-        if let userDefaults = UserDefaults(suiteName: "group.com.shaarav4795.LearnHub"),
+        if let userDefaults = UserDefaults(suiteName: "group.com.shaarav4795.LearnHub.hf"),
            let data = userDefaults.data(forKey: "widgetData"),
            let existing = try? JSONDecoder().decode(WidgetData.self, from: data) {
             widgetData = existing
@@ -123,7 +123,7 @@ final class GamificationManager: ObservableObject {
             widgetData.cardsToReview = dueFlashcardCount(from: sets)
         }
         
-        if let userDefaults = UserDefaults(suiteName: "group.com.shaarav4795.LearnHub"),
+        if let userDefaults = UserDefaults(suiteName: "group.com.shaarav4795.LearnHub.hf"),
            let data = try? JSONEncoder().encode(widgetData) {
             userDefaults.set(data, forKey: "widgetData")
             userDefaults.synchronize()
@@ -135,7 +135,7 @@ final class GamificationManager: ObservableObject {
     func updateWidgetData(from profile: UserProfile, studySets: [StudySet]? = nil) {
         // Load existing sets when none are provided.
         var currentSets: [WidgetStudySet] = []
-        if let userDefaults = UserDefaults(suiteName: "group.com.shaarav4795.LearnHub"),
+        if let userDefaults = UserDefaults(suiteName: "group.com.shaarav4795.LearnHub.hf"),
            let data = userDefaults.data(forKey: "widgetData"),
            let existing = try? JSONDecoder().decode(WidgetData.self, from: data) {
             currentSets = existing.studySets
@@ -177,7 +177,7 @@ final class GamificationManager: ObservableObject {
             studySets: setsToSave
         )
         
-        if let userDefaults = UserDefaults(suiteName: "group.com.shaarav4795.LearnHub"),
+        if let userDefaults = UserDefaults(suiteName: "group.com.shaarav4795.LearnHub.hf"),
            let data = try? JSONEncoder().encode(widgetData) {
             userDefaults.set(data, forKey: "widgetData")
             userDefaults.synchronize()

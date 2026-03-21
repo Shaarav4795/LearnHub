@@ -50,7 +50,7 @@ struct FlashcardProvider: AppIntentTimelineProvider {
             )
         }
         
-        let defaults = UserDefaults(suiteName: "group.com.shaarav4795.LearnHub")
+        let defaults = UserDefaults(suiteName: "group.com.shaarav4795.LearnHub.hf")
         let indexKey = "cardIndex_\(set.id.uuidString)"
         let flipKey = "flipState_\(set.id.uuidString)"
         

@@ -85,7 +85,7 @@ struct FlipFlashcardIntent: AppIntent {
     
     func perform() async throws -> some IntentResult {
         let key = "flipState_\(setID)"
-        let defaults = UserDefaults(suiteName: "group.com.shaarav4795.LearnHub")
+        let defaults = UserDefaults(suiteName: "group.com.shaarav4795.LearnHub.hf")
         let current = defaults?.bool(forKey: key) ?? false
         defaults?.set(!current, forKey: key)
         return .result()
@@ -105,7 +105,7 @@ struct NextFlashcardIntent: AppIntent {
     
     func perform() async throws -> some IntentResult {
         let key = "cardIndex_\(setID)"
-        let defaults = UserDefaults(suiteName: "group.com.shaarav4795.LearnHub")
+        let defaults = UserDefaults(suiteName: "group.com.shaarav4795.LearnHub.hf")
         let current = defaults?.integer(forKey: key) ?? 0
         
         let data = WidgetData.load()
